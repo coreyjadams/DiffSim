@@ -12,7 +12,7 @@ DEFAULT_RUN  = 8678
 
 class dataloader:
 
-    def __init__(self, path=DEFAULT_PATH, run=DEFAULT_RUN, batch_size=32, max_s1 = 30):
+    def __init__(self, path=DEFAULT_PATH, run=DEFAULT_RUN, batch_size=32, max_s1 = 30, db = None):
 
         self.batch_size = batch_size
         self.path = path
@@ -21,21 +21,40 @@ class dataloader:
         self.n_pmts     = 12
         self.n_s1_ticks = max_s1
 
+        self.s2_si_shape = [47, 47, 550]
+
+        if db is None:
+            raise Exception("Must provide a DB")
+        else:
+            self.db_lookup = {
+                "x_lookup" : numpy.asarray(db['X']),
+                "y_lookup" : numpy.asarray(db['Y']),
+                "active"   : numpy.asarray(db['Active']),
+            }
+
     @profile
     def iterate(self, epochs : int = 1):
         # Pull together enough inputs to form the next batch.
 
         # For each batch, we need to assemble:
-        # - all the energy depositions - TODO
-        # - all the S1 signals         - TODO
+        # - all the energy depositions - DONE
+        # - all the S1 signals         - DONE
         # - all the S2Pmt signals      - TODO
         # - all the S2Sipm signals     - TODO
 
-        output_data = {
-            'energy_deposits' : numpy.zeros(shape = (self.batch_size, 1, 4)),
-            'S1Pmt'           : numpy.zeros(shape = (self.batch_size, self.n_pmts, self.n_s1_ticks))
-        }
+        # output_data = {
+        #     'energy_deposits' : numpy.zeros(shape = (self.batch_size, 1, 4)),
+        #     'S1Pmt'           : numpy.zeros(shape = (self.batch_size, self.n_pmts, self.n_s1_ticks)),
+        #     'S2Si'            : numpy.zeros(shape = [self.batch_size,] + self.s2_si_shape)
+        # }
 
+
+
+        output_data_stack = {
+            'energy_deposits' : [],
+            'S1Pmt'           : [],
+            'S2Si'            : [],
+        }
 
         # Loop over the files and pull events until the batch is full
         batch_index = 0
@@ -43,21 +62,59 @@ class dataloader:
         for pmap_file, kdst_file in self.file_list():
 
             for event, pmaps in self.event_reader_tables(pmap_file, kdst_file):
-            # for event, pmaps in self.event_reader(pmap_file, kdst_file):
-                output_data['energy_deposits'][batch_index][:] = [event['X'], event['Y'], event['Z'], 0.0415575 ]
-                output_data['S1Pmt'][batch_index][:] = self.assemble_pmt_image(
-                    event, pmaps, peak_location = 10, max_s1_ticks = self.n_s1_ticks)
-                
+
+                this_output_data = self.build_output_data(
+                    event, 
+                    pmaps,
+                    peak_location = 10,
+                )
+
+                # Skip if there are any issues
+                if this_output_data is None: 
+                    continue
+                else:
+                    for key in this_output_data:
+                        output_data_stack[key].append(this_output_data[key])
+
+
+                # output_data['S2Si'][batch_index][:]
                 batch_index += 1
                 if batch_index == self.batch_size:
+                    output_data = {}
+                    output_data['energy_deposits'] =  numpy.stack(output_data_stack['energy_deposits'])
+                    output_data['S1Pmt'] =  numpy.stack(output_data_stack['S1Pmt'])
+                    output_data['S2Si'] = numpy.zeros(shape = [self.batch_size,] + self.s2_si_shape)
+                    for i, (x,y,z,val) in enumerate(output_data_stack['S2Si']):
+                        output_data['S2Si'][i][x,y,z] = val
+
                     yield output_data
                     batch_index = 0
-                    output_data = {
-                        'energy_deposits' : numpy.zeros(shape = (self.batch_size, 1, 4)),
-                        'S1Pmt'           : numpy.zeros(shape = (self.batch_size, self.n_pmts, self.n_s1_ticks))
+                    output_data_stack = {
+                        'energy_deposits' : [],
+                        'S1Pmt'           : [],
+                        'S2Si'            : [],
                     }
 
 
+    @profile
+    def build_output_data(self, event, pmaps, peak_location):
+        # for event, pmaps in self.event_reader(pmap_file, kdst_file):
+
+        # Create the default empty tensors
+        output_data = {
+            'energy_deposits' : numpy.zeros(shape = (1, 4)),
+            'S1Pmt'           : numpy.zeros(shape = (self.n_pmts, self.n_s1_ticks)),
+            'S2Si'            : ()
+        }
+        
+        output_data['energy_deposits'][:] = [event['X'], event['Y'], event['Z'], 0.0415575 ]
+        
+        output_data['S1Pmt'][:] = self.assemble_pmt_image(
+            event, pmaps, peak_location = 10, max_s1_ticks = self.n_s1_ticks)
+        sipm = self.assemble_sipm_image(event, pmaps, self.db_lookup)
+        if sipm is None: return None
+        output_data['S2Si'] = sipm
+        return output_data
 
     def file_list(self,
         shuffle       : bool = False):
@@ -147,7 +204,6 @@ class dataloader:
         f_trigger1_kdst.close()
 
 
-    @profile
     def event_reader(self, pmap_file, kdst_file):
         # Open the files:
         h_trigger1_pmap = h5py.File(pmap_file, 'r')
@@ -184,7 +240,8 @@ class dataloader:
         h_trigger1_kdst.close()
         h_trigger1_pmap.close()
 
-    def assemble_sipm_image(self, event, pmaps, sipm_db):
+    @profile
+    def assemble_sipm_image(self, event, pmaps, db_lookup):
         # SiPM locations range from -235 to 235 mm in X and Y (inclusive) every 10mm
         # That's 47 locations in X and Y.
         
@@ -195,7 +252,7 @@ class dataloader:
         waveform_length = len(s2_times)
 
         # How many SiPM ticks are we going to need?  
-        n_ticks = 1600
+        n_ticks = 550
         
         #This is more sensors than we need, strictly.  Not all of them are filled.
         
@@ -204,33 +261,48 @@ class dataloader:
         
         # We loop over the waveforms in chunks of (s2_times)
         
-        x, y, z, val = [], [], [], []
 
+        # Figure out the total number of sensors:
         n_sensors = int(len(pmaps["S2Si"]) / waveform_length)
-        for i_sensor in range(n_sensors):
-            for i_tick, tick in enumerate(s2_times):
-                # Global pmaps index repeats every waveform_length
-                global_index = i_sensor*waveform_length + i_tick
-                # Grab the data for this sensor:
-                sensor = pmaps["S2Si"]['nsipm'][global_index]
-                ene    = pmaps["S2Si"]['ene'][global_index]
-                # Actual time of this data from S2 times list
-                time = s2_times[i_tick]
-                # What sensor?
-                # Verify is active:
-                if not sipm_db.iloc[sensor].Active: continue
-                
-                x.append(sipm_db.iloc[sensor].X)
-                y.append(sipm_db.iloc[sensor].Y)
-                z.append((time - s1_t) / 1000)
-                val.append(ene)
 
-            
-
-        return x, y, z, val
+        # Some events have a bug in the s1 or s2 count.
+        # This is an explicit check of that.
+        if (pmaps["S2"]["peak"] != 0).any():
+            return None
 
 
-    @profile
+        # Get the energy, and use it to select only active hits
+        energy      = pmaps["S2Si"]["ene"]
+        energy_selection   = energy != 0.0
+
+        # Make sure we're selecting only active sensors:
+        active_selection   = numpy.take(db_lookup["active"], pmaps["S2Si"]["nsipm"])
+
+        # Merge the selections:
+        selection = numpy.logical_and(energy_selection, active_selection)
+
+        # Each sensor has values, some zero, for every tick in the s2_times.
+        # The Z values are constructed from these, so stack this vector up
+        # by the total number of unique sensors
+
+        ticks       = numpy.tile(s2_times, n_sensors)[selection]
+
+        # x and y are from the sipm lookup tables, and then filter by active sites
+        x_locations = numpy.take(db_lookup["x_lookup"], pmaps["S2Si"]["nsipm"])[selection]
+        y_locations = numpy.take(db_lookup["y_lookup"], pmaps["S2Si"]["nsipm"])[selection]
+
+        # Filter the energy to active sites
+        energy      = energy[selection]
+
+        # Convert to physical coordinates
+        x_locations = ((x_locations / 10 + 23.5) - 1).astype(numpy.int32)
+        y_locations = ((y_locations / 10 + 23.5) - 1).astype(numpy.int32)
+        z_locations = ((ticks - s1_t) / 1000).astype(numpy.int32)
+
+
+        return x_locations, y_locations, z_locations, energy
+
+
     def assemble_pmt_image(self, event, pmaps, peak_location=10, max_s1_ticks=30):
 
         # What is the shape of S1 that we have?
