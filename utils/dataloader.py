@@ -12,7 +12,8 @@ DEFAULT_RUN  = 8678
 
 class dataloader:
 
-    def __init__(self, path=DEFAULT_PATH, run=DEFAULT_RUN, batch_size=32, db = None):
+    def __init__(self, path=DEFAULT_PATH, run=DEFAULT_RUN, 
+        batch_size=32, max_energy_depositions=2, db = None):
 
         self.batch_size = batch_size
         self.path = path
@@ -20,6 +21,7 @@ class dataloader:
 
         self.n_pmts         = 12
         self.readout_length = 550
+        self.max_energy_depositions = max_energy_depositions
 
         self.s1_pmt_shape = [self.n_pmts, self.readout_length]
         self.s2_pmt_shape = [self.n_pmts, self.readout_length]
@@ -40,7 +42,7 @@ class dataloader:
         # For each batch, we need to assemble:
         # - all the energy depositions - DONE
         # - all the S1 signals         - DONE
-        # - all the S2Pmt signals      - TODO
+        # - all the S2Pmt signals      - DONE
         # - all the S2Sipm signals     - DONE
 
 
@@ -103,17 +105,20 @@ class dataloader:
 
         # Create the default empty tensors
         output_data = {
-            'energy_deposits' : numpy.zeros(shape = (1, 4), dtype=numpy.float32),
+            'energy_deposits' : numpy.zeros(shape = (self.max_energy_depositions, 4), dtype=numpy.float32),
             'S1Pmt'           : numpy.zeros(shape = (self.n_pmts, self.readout_length), dtype=numpy.float32),
             'S2Si'            : (),
             'S2Pmt'           : (),
         }
         
-        output_data['energy_deposits'][:] = [event['X'], event['Y'], event['Z'], 0.0415575 ]
+        output_data['energy_deposits'][0,:] = [event['X'], event['Y'], event['Z'], 0.0415575 ]
         
         output_data['S1Pmt'][:] = self.assemble_pmt_image(
             event, pmaps, peak_location = 10, max_s1_ticks = self.readout_length)
         output_data['S2Pmt'] = self.assemble_pmt_s2(event, pmaps)
+        
+        # Veto empty events:
+        if output_data['S2Pmt'] is None: return None
 
         sipm = self.assemble_sipm_image(event, pmaps, self.db_lookup)
         if sipm is None: return None
@@ -335,13 +340,14 @@ class dataloader:
         
         z_locations = ((s2_times - s1_t) / 1000).astype(numpy.int32)
 
+        if (z_locations > self.readout_length).any(): return None
+
         output_s2pmt = numpy.zeros(shape = self.s2_pmt_shape)
 
         global_index = 0
 
         for i_pmt in range(self.n_pmts):
             for i_z in z_locations:
-
                 output_s2pmt[i_pmt, i_z] += s2_values[global_index]
 
                 global_index += 1

@@ -1,3 +1,7 @@
+import tensorflow as tf
+import tensorflow_probability as tfp
+
+
 class NEXT_Simulator(tf.keras.Model):
     
     def __init__(self):
@@ -36,22 +40,30 @@ class NEXT_Simulator(tf.keras.Model):
         # self.lifetime = tf.Variable(25.)
         # self.uniform_sampler = tfp.distributions.Uniform()
         
-        
+    @profile
     def s2pmt_call(self, inputs, training=True):
 
         response = tf.stack([ self.s2pmt_subcall(d) for d in inputs ] )
         return response
     
+    @profile
     def s2pmt_subcall(self, electrons):
         # Pull out z_ticks:
         z_ticks = electrons[:,2]
+        starts = tf.zeros(shape=z_ticks.shape)
+        stops  = tf.ones(shape=z_ticks.shape) * (self.n_ticks - 1)
         # Get the x/y locations
         xy_electrons = electrons[:,0:2]
         
         # Reshape the ticks:
         z_ticks = tf.reshape(z_ticks, z_ticks.shape + (1,))
         # Stack the tick ranges, one per tick:
-        exp_input = tf.stack( [tf.range(self.n_ticks,dtype=tf.dtypes.float32) for _z in z_ticks ])
+        # print(z_ticks.shape)
+        # exp_input = tf.stack( [tf.range(self.n_ticks,dtype=tf.dtypes.float32) for _z in z_ticks ])
+        exp_input = tf.linspace(start=starts, stop=stops, num=550,axis=-1)
+
+
+        # print(exp_input.shape)
         # Apply the exponential, transpose, and make sparse:
         z_values_sparse = tf.sparse.from_dense(tf.transpose(tf.exp( -(exp_input - z_ticks)**2 / 0.1)))
         # print(z_values_sparse)
@@ -144,7 +156,8 @@ class NEXT_Simulator(tf.keras.Model):
         selected_electrons = tf.boolean_mask(electrons, accepted)
         return selected_electrons
     
-    def call(self, energy_depositions):
+    @profile
+    def call(self, energy_depositions, training=True):
         n_electrons, positions = self.generate_electrons(energy_depositions)    
         diffused_electrons = self.diffuse_electrons(n_electrons, positions)
         s2pmt = self.s2pmt_call(diffused_electrons)
