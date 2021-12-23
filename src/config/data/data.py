@@ -12,7 +12,7 @@ class Data:
 @dataclass
 class Krypton(Data):
     name: str = "krypton"
-    path: str = "/Users/corey.adams/data/NEXT/new_raw_data/"
+    path: str = "/lus/grand/projects/datascience/cadams/datasets/NEXT/new_raw_data/"
     run: int  = 8678
 
 

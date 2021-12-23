@@ -97,13 +97,16 @@ class exec(object):
 
         self.set_compute_parameters()
 
-
+        # Always construct a dataloader:
         self.dataloader  = self.build_dataloader()
+
+        # If it's just IO testing, run that here then exit:
+        from config.mode import ModeKind
+        if self.config.mode.name == ModeKind.iotest:
+            return
+
+
         self.simulator   = self.build_simulator()
-        self.optimizer   = self.build_optimizer()
-
-        self.loss_func   = self.build_loss_function()
-
         # Run a forward pass once:
         batch = next(self.dataloader.iterate())
 
@@ -115,7 +118,20 @@ class exec(object):
             n_parameters += tf.reduce_prod(p.shape)
 
         logger.info(f"Number of parameters in this network: {n_parameters}")
-    
+
+
+        # Only need the res of this if we're training
+        if self.config.mode.name != ModeKind.train:
+            return
+
+        # These are just for training:
+        self.optimizer   = self.build_optimizer()
+
+        self.loss_func   = self.build_loss_function()
+
+
+
+
 
         if not MPI_AVAILABLE or hvd.rank() == 0:
             # self.writer = tf.summary.create_file_writer(self.save_path)
@@ -164,19 +180,24 @@ class exec(object):
             logger.setLevel(logging.DEBUG)
 
     def build_dataloader(self):
-        
+
         from utils.dataloader import dataloader
         # Load the sipm database:
         sipm_db = pd.read_pickle("database/new_sipm.pkl")
 
-        dl = dataloader(batch_size=self.config.run.minibatch_size, db=sipm_db)
+        dl = dataloader(
+            batch_size  = self.config.run.minibatch_size,
+            db          = sipm_db,
+            path        = self.config.data.path,
+            run         = self.config.data.run
+            )
 
         return dl
 
     def build_simulator(self):
         from simulator.NEW_Simulator import NEXT_Simulator
 
-        simulator = NEXT_Simulator()   
+        simulator = NEXT_Simulator()
 
         return simulator
 
@@ -184,7 +205,7 @@ class exec(object):
         from config.mode import OptimizerKind
 
         if self.config.mode.optimizer == OptimizerKind.Adam:
-            return tf.keras.optimizers.Adam()    
+            return tf.keras.optimizers.Adam()
         else:
             raise Exception("Unhandled Optimizer")
 
@@ -192,14 +213,14 @@ class exec(object):
         from config.mode import Loss
 
         if self.config.mode.loss == Loss.MSE:
-            return tf.keras.losses.MeanSquaredError()  
+            return tf.keras.losses.MeanSquaredError()
         else:
             raise Exception("Unhandled Loss Kind")
 
 
     def restore(self):
         logger = logging.getLogger()
-        
+
         name = "checkpoint/"
         if not MPI_AVAILABLE or hvd.rank() == 0:
             logger.info("Trying to restore model")
@@ -252,7 +273,7 @@ class exec(object):
         for device in physical_devices:
             tf.config.experimental.set_memory_growth(device, True)
 
-    def run(self):
+    def train(self):
 
         logger = logging.getLogger()
 
@@ -353,6 +374,54 @@ class exec(object):
         if not MPI_AVAILABLE or hvd.rank() == 0:
             self.save_weights()
 
+    def analysis(self):
+
+        # in the summary, we make plots and print weights, etc.
+        logger = logging.getLogger()
+
+        try:
+            self.restore()
+            logger.debug("Loaded weights, optimizer and global step!")
+        except Exception as excep:
+            logger.debug("Failed to load weights!")
+            logger.debug(excep)
+            pass
+
+        logger.info(self.simulator.trainable_variables)
+
+    def iotest(self):
+
+        logger = logging.getLogger()
+
+
+        # Before beginning the loop, manually flush the buffer:
+        logger.handlers[0].flush()
+
+
+        dl_iterable = self.dataloader.iterate()
+
+        while self.global_step < self.config.run.iterations:
+
+            if not self.active: break
+
+            metrics = {}
+            start = time.time()
+
+            batch = next(dl_iterable)
+
+            metrics["io_time"] = time.time() - start
+
+            metrics['time'] = time.time() - start
+
+
+
+            if self.global_step % 1 == 0:
+                logger.info(f"step = {self.global_step}")
+                logger.info(f"time = {metrics['time']:.3f} ({metrics['io_time']:.3f} io)")
+
+            # Iterate:
+            self.global_step += 1
+
 
     def model_summary(self, weights, gradients, step):
         with self.writer.as_default():
@@ -376,7 +445,7 @@ class exec(object):
     def save_weights(self):
 
         name = "checkpoint"
-        
+
         # If the file for the model path already exists, we don't change it until after restoring:
         self.model_path = self.save_path / pathlib.Path(name) / self.model_name
 
@@ -389,12 +458,14 @@ class exec(object):
 
     def finalize(self):
         if not MPI_AVAILABLE or hvd.rank() == 0:
-            self.save_weights()
+            from config.mode import ModeKind
+            if self.config.mode.name == ModeKind.train:
+                self.save_weights()
 
     def interupt_handler(self, sig, frame):
         logger = logging.getLogger()
-        logger.info("Snapshoting weights...")
         self.dataloader.shutdown()
+        logger.info("Caught interrupt, exiting gracefully.")
         self.active = False
 
 
@@ -412,7 +483,17 @@ def main(cfg : Config) -> None:
     # os.chdir(cfg.hydra.run.dir)
     e = exec(cfg)
     signal.signal(signal.SIGINT, e.interupt_handler)
-    e.run()
+
+    from config.mode import ModeKind
+    if cfg.mode.name == ModeKind.iotest:
+        e.iotest()
+    elif cfg.mode.name == ModeKind.train:
+        e.train()
+    elif cfg.mode.name == ModeKind.inference:
+        e.inference()
+    elif cfg.mode.name == ModeKind.analysis:
+        e.analysis()
+    # elif :
     e.finalize()
 
 if __name__ == "__main__":
