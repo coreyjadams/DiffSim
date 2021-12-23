@@ -36,6 +36,13 @@ class dataloader:
                 "active"   : numpy.asarray(db['Active']),
             }
 
+        self.active_files = []
+        self.active = False
+
+    def shutdown(self):
+        self.active = False
+        self.close_open_files()
+
     def iterate(self, epochs : int = 1):
         # Pull together enough inputs to form the next batch.
 
@@ -45,7 +52,7 @@ class dataloader:
         # - all the S2Pmt signals      - DONE
         # - all the S2Sipm signals     - DONE
 
-
+        self.active = True
 
 
         output_data_stack = {
@@ -148,6 +155,9 @@ class dataloader:
         indexes = list(range(n_files))
 
         while True:
+
+            if not self.active: break
+
             if shuffle:
                 indexes = numpy.random.shuffle(indexes)
 
@@ -168,7 +178,10 @@ class dataloader:
 
     def event_reader_tables(self, pmap_file, kdst_file):
         f_trigger1_pmap = tables.File(pmap_file)
+        self.active_files.append(f_trigger1_pmap)
         f_trigger1_kdst = tables.File(kdst_file)
+        self.active_files.append(f_trigger1_kdst)
+
 
         # Load the whole events table into memory
         events = f_trigger1_kdst.get_node('/DST/Events').read()
@@ -208,9 +221,13 @@ class dataloader:
             if r is not None:
                 yield e, r
 
+        # Close open files:
+        self.close_open_files()
 
-        f_trigger1_pmap.close()
-        f_trigger1_kdst.close()
+    def close_open_files(self):
+
+        for f in self.active_files:
+            f.close()
 
 
     def event_reader(self, pmap_file, kdst_file):

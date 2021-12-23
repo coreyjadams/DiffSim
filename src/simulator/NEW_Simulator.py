@@ -23,7 +23,7 @@ class NEXT_Simulator(tf.keras.Model):
         )
         
         # Trainable Parameters for diffusion:
-        self.diffusion_scale = tf.Variable([0.5, 0.5, 0.1])
+        self.diffusion_scale = tf.Variable([1.0, 1.0, 0.25])
         
         self.electron_normal_distribution = tfp.distributions.Normal(
             loc = 0.0, 
@@ -39,14 +39,14 @@ class NEXT_Simulator(tf.keras.Model):
         # Lifetime variables:
         # self.lifetime = tf.Variable(25.)
         # self.uniform_sampler = tfp.distributions.Uniform()
+    
         
-    @profile
     def s2pmt_call(self, inputs, training=True):
 
         response = tf.stack([ self.s2pmt_subcall(d) for d in inputs ] )
         return response
     
-    @profile
+    @tf.function
     def s2pmt_subcall(self, electrons):
         # Pull out z_ticks:
         z_ticks = electrons[:,2]
@@ -156,7 +156,6 @@ class NEXT_Simulator(tf.keras.Model):
         selected_electrons = tf.boolean_mask(electrons, accepted)
         return selected_electrons
     
-    @profile
     def call(self, energy_depositions, training=True):
         n_electrons, positions = self.generate_electrons(energy_depositions)    
         diffused_electrons = self.diffuse_electrons(n_electrons, positions)
