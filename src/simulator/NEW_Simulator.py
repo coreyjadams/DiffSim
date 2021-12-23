@@ -37,21 +37,27 @@ class NEXT_Simulator(tf.keras.Model):
         self.pmt_response_scale = tf.Variable(tf.ones(shape=[12]))
         
         # Lifetime variables:
-        # self.lifetime = tf.Variable(25.)
-        # self.uniform_sampler = tfp.distributions.Uniform()
+        self.lifetime = tf.Variable(25.)
+        self.uniform_sampler = tfp.distributions.Uniform()
     
-        
+        # Handling the z-differentiation with a gaussian response along Z for each sensor.
+        self.bin_sigma = tf.constant(0.1)
+        self.gaussian_norm = tf.constant(1./(self.bin_sigma * 2.5066282746) )
+
+    # @profile
+    @tf.function
     def s2pmt_call(self, inputs, training=True):
 
         response = tf.stack([ self.s2pmt_subcall(d) for d in inputs ] )
         return response
     
     @tf.function
+    # @profile
     def s2pmt_subcall(self, electrons):
         # Pull out z_ticks:
         z_ticks = electrons[:,2]
-        starts = tf.zeros(shape=z_ticks.shape)
-        stops  = tf.ones(shape=z_ticks.shape) * (self.n_ticks - 1)
+        starts = tf.zeros(shape=z_ticks.shape) + 0.5
+        stops  = tf.ones(shape=z_ticks.shape) * (self.n_ticks - 1) + 0.5
         # Get the x/y locations
         xy_electrons = electrons[:,0:2]
         
@@ -65,7 +71,10 @@ class NEXT_Simulator(tf.keras.Model):
 
         # print(exp_input.shape)
         # Apply the exponential, transpose, and make sparse:
-        z_values_sparse = tf.sparse.from_dense(tf.transpose(tf.exp( -(exp_input - z_ticks)**2 / 0.1)))
+        
+        exp_values = self.gaussian_norm * tf.exp( -(exp_input - z_ticks)**2 / self.bin_sigma)
+
+        z_values_sparse = tf.sparse.from_dense(tf.transpose(exp_values))
         # print(z_values_sparse)
         
         # This runs the neural network to get the PMT response:
@@ -77,12 +86,13 @@ class NEXT_Simulator(tf.keras.Model):
 
         return result
         
+    # @profile
     def s2pmt_call_network(self,xy_electrons):
         x = self.s2pmt_layer1(xy_electrons)
         x = self.s2pmt_layer2(x)
         return x*tf.math.pow(self.pmt_response_scale, 2)
     
-    
+    # @profile
     def generate_electrons(self,
         energy_depositions : tf.Tensor):
         '''
@@ -106,6 +116,8 @@ class NEXT_Simulator(tf.keras.Model):
 
         return electrons, electron_positions 
 
+
+    # @profile
     def diffuse_electrons(self, n_electrons, positions):
         
         # Sample the diffusion of electrons once per electon, but ensure to multiply by sqrt(z)
@@ -146,18 +158,29 @@ class NEXT_Simulator(tf.keras.Model):
 
         return diffused_electrons
     
-    def apply_lifetime(self, electrons):
+    @tf.function
+    def select_electrons(self, _input_electrons):
+        z_position = _input_electrons[:,2]
+        probability = 1 - tf.math.exp( - z_position / self.lifetime)
+        accepted = probability > self.uniform_sampler.sample(len(_input_electrons))
+        selected_electrons = tf.boolean_mask(_input_electrons, accepted)
+        return selected_electrons
 
-        print(electrons.shape)
-        z_position = electrons[:,2]
-        # This function probabilistically removes electrons based upon the lifetime.
-        probability = 1 - tf.math.exp( - electrons[:,2] / self.lifetime)
-        accepted = probability > self.uniform_sampler.sample(len(electrons))
-        selected_electrons = tf.boolean_mask(electrons, accepted)
+
+    # @profile
+    def apply_lifetime(self, diffused_electrons):
+
+        # @profile
+
+
+        selected_electrons = [ self.select_electrons(de) for de in diffused_electrons]
+
         return selected_electrons
     
+    # @profile
     def call(self, energy_depositions, training=True):
         n_electrons, positions = self.generate_electrons(energy_depositions)    
         diffused_electrons = self.diffuse_electrons(n_electrons, positions)
+        diffused_electrons = self.apply_lifetime(diffused_electrons)
         s2pmt = self.s2pmt_call(diffused_electrons)
         return s2pmt
