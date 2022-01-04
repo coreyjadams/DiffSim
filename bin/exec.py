@@ -23,22 +23,6 @@ os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 import tensorflow as tf
 # tf.random.set_seed(2)
 
-try:
-    import horovod.tensorflow as hvd
-    hvd.init()
-
-    # This is to force each rank onto it's own GPU:
-    if (hvd.size() != 1 ):
-        # Only set this if there is more than one GPU.  Otherwise, its probably
-        # Set elsewhere
-        gpus = tf.config.list_physical_devices('GPU')
-        for gpu in gpus:
-            tf.config.experimental.set_memory_growth(gpu, True)
-        if hvd and len(gpus) > 0:
-            tf.config.set_visible_devices(gpus[hvd.local_rank() % len(gpus)],'GPU')
-    MPI_AVAILABLE=True
-except:
-    MPI_AVAILABLE=False
 
 
 import logging
@@ -53,6 +37,10 @@ src_dir = os.path.dirname(src_dir) + "/src/"
 sys.path.insert(0,src_dir)
 
 from config import Config
+from config import MPI_AVAILABLE
+
+if MPI_AVAILABLE:
+    import horovod.tensorflow as hvd
 
 
 
@@ -181,11 +169,11 @@ class exec(object):
 
     def build_dataloader(self):
 
-        from utils.dataloader import dataloader
+        from utils.dataloaders import krypton
         # Load the sipm database:
         sipm_db = pd.read_pickle("database/new_sipm.pkl")
 
-        dl = dataloader(
+        dl = krypton(
             batch_size  = self.config.run.minibatch_size,
             db          = sipm_db,
             path        = self.config.data.path,
@@ -457,6 +445,8 @@ class exec(object):
             pickle.dump(self.global_step, file=_f)
 
     def finalize(self):
+        self.dataloader.shutdown()
+        
         if not MPI_AVAILABLE or hvd.rank() == 0:
             from config.mode import ModeKind
             if self.config.mode.name == ModeKind.train:

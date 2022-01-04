@@ -4,11 +4,22 @@ import pathlib
 import numpy
 import glob
 
-from multiprocessing import Pool
+# from multiprocessing import Pool
+
+from config import MPI_AVAILABLE
+
+if MPI_AVAILABLE:
+    import horovod.tensorflow as hvd
+    from mpi4py import MPI
+
+
+import logging
+from logging import handlers
+logger = logging.getLogger()
 
 
 
-class dataloader:
+class krypton:
 
     def __init__(self, path, run,
         batch_size=32, max_energy_depositions=2, db = None):
@@ -39,6 +50,7 @@ class dataloader:
 
     def shutdown(self):
         self.active = False
+
         self.close_open_files()
 
     def iterate(self, epochs : int = 1):
@@ -66,6 +78,10 @@ class dataloader:
         for pmap_file, kdst_file in self.file_list():
 
             for event, pmaps in self.event_reader_tables(pmap_file, kdst_file):
+
+                if not self.active:
+                    print("Stopping iterations")
+                    raise StopIteration()
 
                 this_output_data = self.build_output_data(
                     event,
@@ -148,22 +164,50 @@ class dataloader:
         kdst_format = "kdst_{:04}_8678_trigger1_v1.2.0_20191122_krbg.h5"
 
         # How many total files?
-        n_files = len(glob.glob(str(kdst_path / pathlib.Path("*.h5"))))
+        # Don't glob from everywhere if at scale:
+        if not MPI_AVAILABLE or hvd.rank() == 0:
+            n_files = len(glob.glob(str(kdst_path / pathlib.Path("*.h5"))))
+            if n_files == 0:
+                raise Exception("No files found!")
+        else:
+            n_files = 0
 
-        if n_files == 0:
-            raise Exception("No files found!")
 
-        indexes = list(range(n_files))
+
+        # intervene here and make sure, if distributed, each rank
+        # gets unique files.
+
+        if MPI_AVAILABLE:
+
+            n_files = MPI.COMM_WORLD.bcast(n_files, root=0)
+
+            # We do this in the dumbest and simplest way.
+            # Divide the number of files by the number of ranks (n_files_per_rank)
+            n_files_per_rank = int(n_files / hvd.size()) + 1
+            # Assign each rank the file indexes of:
+
+            local_indexes = []
+            for i in range(n_files_per_rank):
+                index = i*hvd.size() + hvd.rank()
+                if index < n_files: local_indexes.append(index)
+
+
+        else:
+            local_indexes = list(range(n_files))
 
         while True:
+
+            # Randomize the indexes:
+
+            # file reading after each epoch.
 
             if not self.active: break
 
             if shuffle:
-                indexes = numpy.random.shuffle(indexes)
+                indexes = numpy.random.shuffle(local_indexes)
 
-            i = 0
-            for file_index in range(n_files):
+            for file_index in local_indexes:
+                if not self.active: break
 
                 kdst = kdst_path / pathlib.Path(kdst_format.format(file_index))
                 pmap = pmap_path / pathlib.Path(pmap_format.format(file_index))
@@ -174,8 +218,7 @@ class dataloader:
 
                 yield pmap, kdst
 
-                if i > 1: break
-
+        self.close_open_files()
 
     def event_reader_tables(self, pmap_file, kdst_file):
         f_trigger1_pmap = tables.File(pmap_file)
@@ -226,9 +269,9 @@ class dataloader:
         self.close_open_files()
 
     def close_open_files(self):
-
         for f in self.active_files:
             f.close()
+        self.active_files = []
 
 
     def event_reader(self, pmap_file, kdst_file):
@@ -358,7 +401,7 @@ class dataloader:
 
         z_locations = ((s2_times - s1_t) / 1000).astype(numpy.int32)
 
-        if (z_locations > self.readout_length).any(): return None
+        if (z_locations > self.readout_length).any() or (z_locations < 0).any(): return None
 
         output_s2pmt = numpy.zeros(shape = self.s2_pmt_shape)
 
