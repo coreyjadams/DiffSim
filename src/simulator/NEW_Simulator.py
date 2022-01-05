@@ -23,7 +23,7 @@ class NEXT_Simulator(tf.keras.Model):
         )
 
         # Trainable Parameters for diffusion:
-        self.diffusion_scale = tf.Variable([1.0, 1.0, 0.25])
+        self.diffusion_scale = tf.Variable([1.0, 1.0, 0.55])
 
         self.electron_normal_distribution = tfp.distributions.Normal(
             loc = 0.0,
@@ -37,7 +37,8 @@ class NEXT_Simulator(tf.keras.Model):
         self.pmt_response_scale = tf.Variable(tf.ones(shape=[12]))
 
         # Lifetime variables:
-        self.lifetime = tf.Variable(25.)
+        self.lifetime = tf.Variable(250.)
+        self.lifetime_sharpness = tf.constant(0.001)
         self.uniform_sampler = tfp.distributions.Uniform()
 
         # Handling the z-differentiation with a gaussian response along Z for each sensor.
@@ -58,14 +59,15 @@ class NEXT_Simulator(tf.keras.Model):
         return metrics
     # @profile
     # @tf.function
-    def s2pmt_call(self, inputs, training=True):
+    def s2pmt_call(self, inputs, diffusion_weight, training=True):
 
-        response = tf.stack([ self.s2pmt_subcall(d) for d in inputs ] )
+        response = tf.stack([ self.s2pmt_subcall(i, d) for i, d in zip(inputs, diffusion_weight) ] )
+
         return response
 
     # @tf.function
     # @profile
-    def s2pmt_subcall(self, electrons):
+    def s2pmt_subcall(self, electrons, weight):
         # Pull out z_ticks:
         z_ticks = electrons[:,2]
         starts = tf.zeros(shape=z_ticks.shape) + 0.5
@@ -85,6 +87,13 @@ class NEXT_Simulator(tf.keras.Model):
         # Apply the exponential, transpose, and make sparse:
 
         exp_values = self.gaussian_norm * tf.exp( -(exp_input - z_ticks)**2 / self.bin_sigma)
+        #
+        # print(exp_values.shape)
+        # print(weight.shape)
+        # print((tf.reshape(weight, weight.shape + (1,))*exp_values).shape)
+
+        # Multiple by the weight of each electron:
+        exp_values = tf.reshape(weight, weight.shape + (1,))*exp_values
 
         z_values_sparse = tf.sparse.from_dense(tf.transpose(exp_values))
         # print(z_values_sparse)
@@ -173,10 +182,16 @@ class NEXT_Simulator(tf.keras.Model):
     # @tf.function
     def select_electrons(self, _input_electrons):
         z_position = _input_electrons[:,2]
-        probability = 1 - tf.math.exp( - z_position / self.lifetime)
-        accepted = probability > self.uniform_sampler.sample(len(_input_electrons))
-        selected_electrons = tf.boolean_mask(_input_electrons, accepted)
-        return selected_electrons
+        # We simply compute a weight, per electron, dependent on the lifetime
+
+        # One random number per electron:
+        randoms = self.uniform_sampler.sample(z_position.shape[0])
+
+        threshold = tf.math.exp( - z_position / self.lifetime) - randoms
+        threshold /= self.lifetime_sharpness
+        # This maps each electron into roughly a zero or one value
+        weight = tf.math.sigmoid(threshold)
+        return weight
 
 
     # @profile
@@ -193,6 +208,6 @@ class NEXT_Simulator(tf.keras.Model):
     def call(self, energy_depositions, training=True):
         n_electrons, positions = self.generate_electrons(energy_depositions)
         diffused_electrons = self.diffuse_electrons(n_electrons, positions)
-        diffused_electrons = self.apply_lifetime(diffused_electrons)
-        s2pmt = self.s2pmt_call(diffused_electrons)
+        diffusion_weight = self.apply_lifetime(diffused_electrons)
+        s2pmt = self.s2pmt_call(diffused_electrons, diffusion_weight)
         return s2pmt
