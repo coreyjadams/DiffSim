@@ -6,6 +6,7 @@ if MPI_AVAILABLE:
 import tensorflow as tf
 
 
+
 class supervised_trainer:
 
     def __init__(self, config):
@@ -41,16 +42,27 @@ class supervised_trainer:
 
         metrics = {}
 
+
         with tf.GradientTape() as tape:
-            generated_s2_image = simulator(batch['energy_deposits'])
+            gen_s2_pmt, gen_s2_si = simulator(batch['energy_deposits'])
             # print(generated_s2_image.shape)
 
-            s2_pmt_loss = self.loss_func(batch["S2Pmt"],  generated_s2_image)
+
+
+            s2_pmt_loss = tf.reduce_sum(tf.pow(batch["S2Pmt"] - gen_s2_pmt, 2.), axis=(1,2))
+            s2_si_loss = tf.reduce_sum(tf.pow(batch["S2Si"] - gen_s2_si, 2.), axis=(1,2,3))
+
+            s2_pmt_loss = tf.reduce_mean(s2_pmt_loss)
+            s2_si_loss = tf.reduce_mean(s2_si_loss)
+
+            # s2_pmt_loss = self.loss_func(batch["S2Pmt"],  gen_s2_pmt)
+            # s2_si_loss  = self.loss_func(batch["S2Si"],  gen_s2_si)
+            loss = s2_si_loss + s2_pmt_loss
 
         metrics['s2_pmt_loss'] = s2_pmt_loss
+        metrics['s2_si_loss'] = s2_si_loss
 
         # Combine losses
-        loss = s2_pmt_loss
 
         metrics['loss'] = loss
 

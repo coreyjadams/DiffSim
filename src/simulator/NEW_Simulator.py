@@ -30,14 +30,28 @@ class NEXT_Simulator(tf.keras.Model):
             scale = 1.0
         )
 
+
+        # Here is the pmt network:
         self.s2pmt_layer1 = tf.keras.layers.Dense(units=28, activation="sigmoid")
         self.s2pmt_layer2 = tf.keras.layers.Dense(units=12, activation="sigmoid")
+
+        # Here is the sipm network:
+        # Need to end up with 47x47 = 2209 sipms.
+        self.s2si_layer1 = tf.keras.layers.Dense(units=64,   activation="sigmoid")
+        self.s2si_layer2 = tf.keras.layers.Dense(units=128,  activation="sigmoid")
+        self.s2si_layer3 = tf.keras.layers.Dense(units=256,  activation="sigmoid")
+        self.s2si_layer4 = tf.keras.layers.Dense(units=47*47, activation="sigmoid")
+
 
         # PMT Response scale:
         self.pmt_response_scale = tf.Variable(tf.ones(shape=[12]))
 
+        # Sipm Response scale:
+        self.si_response_scale = tf.Variable(tf.ones(shape=[47*47]))
+
+
         # Lifetime variables:
-        self.lifetime = tf.Variable(250.)
+        self.lifetime = tf.Variable(12000.)
         self.lifetime_sharpness = tf.constant(0.001)
         self.uniform_sampler = tfp.distributions.Uniform()
 
@@ -59,15 +73,24 @@ class NEXT_Simulator(tf.keras.Model):
         return metrics
     # @profile
     # @tf.function
-    def s2pmt_call(self, inputs, diffusion_weight, training=True):
+    def s2_call(self, inputs, diffusion_weight, training=True):
 
-        response = tf.stack([ self.s2pmt_subcall(i, d) for i, d in zip(inputs, diffusion_weight) ] )
+        responses = [ self.s2_subcall(i, d) for i, d in zip(inputs, diffusion_weight) ]
 
-        return response
+        pmt_responses, sipm_responses = zip(*responses)
+
+        pmt_response  = tf.stack(pmt_responses)
+        sipm_response = tf.stack(sipm_responses)
+
+        # print("Final pmt_response.shape: ", pmt_response.shape)
+        # print("Final sipm_response.shape: ", sipm_response.shape)
+
+        return pmt_response, sipm_response
+
 
     # @tf.function
     # @profile
-    def s2pmt_subcall(self, electrons, weight):
+    def s2_subcall(self, electrons, weight):
         # Pull out z_ticks:
         z_ticks = electrons[:,2]
         starts = tf.zeros(shape=z_ticks.shape) + 0.5
@@ -98,20 +121,35 @@ class NEXT_Simulator(tf.keras.Model):
         z_values_sparse = tf.sparse.from_dense(tf.transpose(exp_values))
         # print(z_values_sparse)
 
-        # This runs the neural network to get the PMT response:
-        pmt_response = self.s2pmt_call_network(xy_electrons)
-        result = tf.sparse.sparse_dense_matmul(z_values_sparse, pmt_response)
-        result = tf.transpose(result)
+        # This runs the neural network to get the PMT and SiPM response:
+        pmt_response  = self.s2pmt_call_network(xy_electrons)
+        pmt_result  = tf.sparse.sparse_dense_matmul(z_values_sparse, pmt_response)
+        pmt_result = tf.transpose(pmt_result)
+
+        sipm_response = self.s2si_call_network(xy_electrons)
+        sipm_result = tf.sparse.sparse_dense_matmul(z_values_sparse, sipm_response)
+        sipm_result = tf.transpose(sipm_result)
+        sipm_result = tf.reshape(sipm_result, (47, 47, self.n_ticks))
 
 
 
-        return result
+        return pmt_result, sipm_result
 
     # @profile
     def s2pmt_call_network(self,xy_electrons):
         x = self.s2pmt_layer1(xy_electrons)
         x = self.s2pmt_layer2(x)
         return x*tf.math.pow(self.pmt_response_scale, 2)
+
+    def s2si_call_network(self,xy_electrons):
+        x = self.s2si_layer1(xy_electrons)
+        x = self.s2si_layer2(x)
+        x = self.s2si_layer3(x)
+        x = self.s2si_layer4(x)
+        # x = tf.reshape(x, (-1, 47, 47))
+        # print(x.shape)
+        return x*tf.math.pow(self.si_response_scale, 2)
+
 
     # @profile
     def generate_electrons(self,
@@ -209,5 +247,5 @@ class NEXT_Simulator(tf.keras.Model):
         n_electrons, positions = self.generate_electrons(energy_depositions)
         diffused_electrons = self.diffuse_electrons(n_electrons, positions)
         diffusion_weight = self.apply_lifetime(diffused_electrons)
-        s2pmt = self.s2pmt_call(diffused_electrons, diffusion_weight)
-        return s2pmt
+        s2pmt, s2si = self.s2_call(diffused_electrons, diffusion_weight)
+        return s2pmt, s2si
