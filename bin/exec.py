@@ -112,10 +112,8 @@ class exec(object):
         if self.config.mode.name != ModeKind.train:
             return
 
-        # These are just for training:
-        self.optimizer   = self.build_optimizer()
+        self.trainer = self.build_trainer()
 
-        self.loss_func   = self.build_loss_function()
 
 
 
@@ -189,22 +187,13 @@ class exec(object):
 
         return simulator
 
-    def build_optimizer(self):
-        from config.mode import OptimizerKind
+    def build_trainer(self):
 
-        if self.config.mode.optimizer == OptimizerKind.Adam:
-            return tf.keras.optimizers.Adam()
-        else:
-            raise Exception("Unhandled Optimizer")
+        # Shouldn't reach this portion unless training.
+        from trainers import supervised_trainer
 
-    def build_loss_function(self):
-        from config.mode import Loss
-
-        if self.config.mode.loss == Loss.MSE:
-            return tf.keras.losses.MeanSquaredError()
-        else:
-            raise Exception("Unhandled Loss Kind")
-
+        trainer = supervised_trainer(self.config.mode)
+        return trainer
 
     def restore(self):
         logger = logging.getLogger()
@@ -287,6 +276,9 @@ class exec(object):
             # And the global step:
             self.global_step = hvd.broadcast_object(
                 self.global_step, root_rank=0)
+
+            # And the optimizer:
+            hvd.broadcast_variables(self.trainer.optimizer.variables(), root_rank=0)
             logger.info("Done broadcasting initial model and optimizer state.")
 
 
@@ -315,19 +307,13 @@ class exec(object):
 
             metrics["io_time"] = time.time() - start
 
-            with tf.GradientTape() as tape:
-                generated_s2_image = self.simulator(batch['energy_deposits'])
-                # print(generated_s2_image.shape)
-
-                loss = self.loss_func(batch["S2Pmt"],  generated_s2_image)
-
-            metrics['loss'] = loss
-
-            grads = tape.gradient(loss, self.simulator.trainable_variables)
-
-            self.optimizer.apply_gradients(zip(grads, self.simulator.trainable_variables))
+            train_metrics = self.trainer.train_iteration(self.simulator, batch)
+            metrics.update(train_metrics)
 
             metrics['time'] = time.time() - start
+
+            simulator_metrics = self.simulator.generate_summary_dict()
+            metrics.update(simulator_metrics)
 
 
             self.summary(metrics, self.global_step)
@@ -446,7 +432,7 @@ class exec(object):
 
     def finalize(self):
         self.dataloader.shutdown()
-        
+
         if not MPI_AVAILABLE or hvd.rank() == 0:
             from config.mode import ModeKind
             if self.config.mode.name == ModeKind.train:

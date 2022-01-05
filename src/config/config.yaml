@@ -2,5 +2,5 @@ defaults:
   - _self_
   - base_config
 
-save_path: output/${data.name}/
+save_path: output/${run.id}/${data.name}/
 model_name: model

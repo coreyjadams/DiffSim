@@ -28,7 +28,7 @@ class Run:
     compute_mode:       ComputeMode = ComputeMode.GPU
     iterations:         int         = 50
     minibatch_size:     int         = 64
-    id:                 int         = MISSING
+    id:                 str         = MISSING
     precision:          Precision   = Precision.float32
     profile:            bool        = False
     checkpoint:         int         = 200
@@ -51,7 +51,7 @@ defaults = [
 
 @dataclass
 class Config:
-    defaults: List[Any] = field(default_factory=lambda: defaults) 
+    defaults: List[Any] = field(default_factory=lambda: defaults)
     #         "_self_",
     #         {"run" : Run()}
     #     ]
@@ -63,4 +63,3 @@ class Config:
     data: Any = MISSING
 
 cs.store(name="base_config", node=Config)
-

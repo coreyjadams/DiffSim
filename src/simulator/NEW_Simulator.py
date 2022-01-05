@@ -44,6 +44,18 @@ class NEXT_Simulator(tf.keras.Model):
         self.bin_sigma = tf.constant(0.1)
         self.gaussian_norm = tf.constant(1./(self.bin_sigma * 2.5066282746) )
 
+    def generate_summary_dict(self):
+        # Add relevant objects to a dictionary for a summary:
+
+        metrics = {}
+
+        metrics['diffusion/x'] = self.diffusion_scale[0]
+        metrics['diffusion/y'] = self.diffusion_scale[1]
+        metrics['diffusion/z'] = self.diffusion_scale[2]
+
+        metrics['lifetime']    = self.lifetime.numpy()
+
+        return metrics
     # @profile
     # @tf.function
     def s2pmt_call(self, inputs, training=True):
