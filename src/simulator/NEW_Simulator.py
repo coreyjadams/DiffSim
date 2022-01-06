@@ -54,12 +54,9 @@ class NEXT_Simulator(tf.keras.Model):
         # We set a trainable sigma in x and y and then fine tune that.
         self.sipm_sigma = tf.Variable(1.0)
 
-        # Here is the sipm network:
-        # Need to end up with 47x47 = 2209 sipms.
-        # self.s2si_layer1 = tf.keras.layers.Dense(units=64,   activation="sigmoid")
-        # self.s2si_layer2 = tf.keras.layers.Dense(units=128,  activation="sigmoid")
-        # self.s2si_layer3 = tf.keras.layers.Dense(units=256,  activation="sigmoid")
-        # self.s2si_layer4 = tf.keras.layers.Dense(units=47*47, activation="sigmoid")
+        # We need a small network to model the EL amplification.
+        # Takes an XY location and provides and overall normalization
+        # to apply to all sipms (same per sipm)
 
 
         # PMT Response scale:
