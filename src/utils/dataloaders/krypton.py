@@ -17,6 +17,11 @@ import logging
 from logging import handlers
 logger = logging.getLogger()
 
+# For krypton, the detector parameters are supposed to be:
+# drift_velocity         = 1.0 * mm / mus
+# lifetime               = 12 * ms
+# transverse_diffusion   = 1.072 * mm / cm**0.5
+# longitudinal_diffusion = 0.267 * mm / cm**0.5
 
 
 class krypton:
@@ -147,7 +152,7 @@ class krypton:
         return output_data
 
     def file_list(self,
-        shuffle       : bool = False):
+        shuffle       : bool = True):
         '''
         Loop over and yield pairs of connected pmap and kdst files.
 
