@@ -26,21 +26,40 @@ class NEXT_Simulator(tf.keras.Model):
         self.diffusion_scale = tf.Variable([1.0, 1.0, 0.55])
 
         self.electron_normal_distribution = tfp.distributions.Normal(
-            loc = 0.0,
+            loc   = 0.0,
             scale = 1.0
         )
 
+        # Need to create an array of all sipm locations.
+        # Note that locations are in mm, and the center at 0,0
+        # Create the 1D locations:
+        sipms_1D = tf.range(-235., 235., 10.)
+        n_sipms = sipms_1D.shape[0]
+        # Map 1D locations to a tile for X, tile for Y:
+        sipm_locations_x = tf.tile(sipms_1D, (n_sipms,))
+        sipm_locations_y = tf.tile(sipms_1D, (n_sipms,))
+        # Put them in the right shape, and transpose x:
+        sipm_locations_x = tf.transpose(tf.reshape(sipm_locations_x, (n_sipms, n_sipms)))
+        sipm_locations_y = tf.reshape(sipm_locations_y, (n_sipms, n_sipms))
+        # Stack together"
+        sipm_locations = tf.stack([sipm_locations_x, sipm_locations_y], -1)
+        # Reshape since that's needed for the broadcast:
+        self.sipm_locations = tf.reshape(sipm_locations, (1,) + sipm_locations.shape)
 
         # Here is the pmt network:
         self.s2pmt_layer1 = tf.keras.layers.Dense(units=28, activation="sigmoid")
         self.s2pmt_layer2 = tf.keras.layers.Dense(units=12, activation="sigmoid")
 
+        # Sipms are generally a gaussian-like response to incident charge.
+        # We set a trainable sigma in x and y and then fine tune that.
+        self.sipm_sigma = tf.Variable(1.0)
+
         # Here is the sipm network:
         # Need to end up with 47x47 = 2209 sipms.
-        self.s2si_layer1 = tf.keras.layers.Dense(units=64,   activation="sigmoid")
-        self.s2si_layer2 = tf.keras.layers.Dense(units=128,  activation="sigmoid")
-        self.s2si_layer3 = tf.keras.layers.Dense(units=256,  activation="sigmoid")
-        self.s2si_layer4 = tf.keras.layers.Dense(units=47*47, activation="sigmoid")
+        # self.s2si_layer1 = tf.keras.layers.Dense(units=64,   activation="sigmoid")
+        # self.s2si_layer2 = tf.keras.layers.Dense(units=128,  activation="sigmoid")
+        # self.s2si_layer3 = tf.keras.layers.Dense(units=256,  activation="sigmoid")
+        # self.s2si_layer4 = tf.keras.layers.Dense(units=47*47, activation="sigmoid")
 
 
         # PMT Response scale:
@@ -68,9 +87,23 @@ class NEXT_Simulator(tf.keras.Model):
         metrics['diffusion/y'] = self.diffusion_scale[1]
         metrics['diffusion/z'] = self.diffusion_scale[2]
 
+        metrics['sipm_psf']    = self.sipm_sigma
+
         metrics['lifetime']    = self.lifetime.numpy()
 
+        # Mean responses:
+        metrics['response_scale/pmt'] = tf.reduce_mean(self.pmt_response_scale)
+        metrics['response_scale/sipm'] = tf.reduce_mean(self.si_response_scale)
+
         return metrics
+
+    def regularization(self):
+
+        # Hold the response scales close to 1, as they are a relative normalization:
+        reg = tf.reduce_mean(tf.math.pow(self.si_response_scale - 1, 2))
+
+        reg += tf.reduce_mean(tf.math.pow(self.pmt_response_scale - 1, 2))
+
     # @profile
     # @tf.function
     def s2_call(self, inputs, diffusion_weight, training=True):
@@ -126,10 +159,37 @@ class NEXT_Simulator(tf.keras.Model):
         pmt_result  = tf.sparse.sparse_dense_matmul(z_values_sparse, pmt_response)
         pmt_result = tf.transpose(pmt_result)
 
-        sipm_response = self.s2si_call_network(xy_electrons)
+        # For the sipm response, we are actually applying a
+        # gaussian for the mean value of the response.
+
+
+
+        # Here, we compute an gaussian point spread function
+        # to represent the sipm response:
+
+        xy_reshaped = tf.reshape(xy_electrons, (xy_electrons.shape[0], 1, 1, xy_electrons.shape[-1]))
+
+        # For each electron, we subtract it's position from the sipm locations:
+        subtracted_values = xy_reshaped - self.sipm_locations
+
+        gaussian_input = tf.reduce_sum(subtracted_values, axis=-1)
+        gaussian_input = tf.math.pow(gaussian_input, 2) / tf.pow(self.sipm_sigma, 2)
+
+        sipm_response = tf.math.exp(-gaussian_input)
+
+
+
+        # Here, we flatten the sipm_resonse matrix to enable the matmul:
+        shape_cache = sipm_response.shape
+
+        sipm_response = tf.reshape(sipm_response, (shape_cache[0], -1))
+
+        # And, apply the individual sipm shape:
+        sipm_response *= self.si_response_scale
+
         sipm_result = tf.sparse.sparse_dense_matmul(z_values_sparse, sipm_response)
         sipm_result = tf.transpose(sipm_result)
-        sipm_result = tf.reshape(sipm_result, (47, 47, self.n_ticks))
+        sipm_result = tf.reshape(sipm_result, (shape_cache[1], shape_cache[2], self.n_ticks))
 
 
 
@@ -139,16 +199,16 @@ class NEXT_Simulator(tf.keras.Model):
     def s2pmt_call_network(self,xy_electrons):
         x = self.s2pmt_layer1(xy_electrons)
         x = self.s2pmt_layer2(x)
-        return x*tf.math.pow(self.pmt_response_scale, 2)
+        return x*self.pmt_response_scale
 
-    def s2si_call_network(self,xy_electrons):
-        x = self.s2si_layer1(xy_electrons)
-        x = self.s2si_layer2(x)
-        x = self.s2si_layer3(x)
-        x = self.s2si_layer4(x)
-        # x = tf.reshape(x, (-1, 47, 47))
-        # print(x.shape)
-        return x*tf.math.pow(self.si_response_scale, 2)
+    # def s2si_call_network(self,xy_electrons):
+    #     x = self.s2si_layer1(xy_electrons)
+    #     x = self.s2si_layer2(x)
+    #     x = self.s2si_layer3(x)
+    #     x = self.s2si_layer4(x)
+    #     # x = tf.reshape(x, (-1, 47, 47))
+    #     # print(x.shape)
+    #     return x*tf.math.pow(self.si_response_scale, 2)
 
 
     # @profile
@@ -206,7 +266,7 @@ class NEXT_Simulator(tf.keras.Model):
         # At this point, each individual energy deposition has a vector of displacements, for each electron
         sqrt_z = tf.reshape(sqrt_z, (-1))
         for i, (scale, mean) in enumerate(zip(tf.reshape(sqrt_z, (-1,)), tf.reshape(positions,(-1,3) ) )):
-            displacements[i] = tf.math.pow(self.diffusion_scale, 2)*displacements[i]*scale + mean
+            displacements[i] = self.diffusion_scale*displacements[i]*scale + mean
         # Now, we don't care about the individual depositions anymore, we have all of the electrons.
 
         # We recombine into per-batch events to help smooth this over:
