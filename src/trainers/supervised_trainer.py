@@ -9,7 +9,7 @@ import tensorflow as tf
 
 class supervised_trainer:
 
-    def __init__(self, config):
+    def __init__(self, config, monitor_data):
 
         self.config = config
 
@@ -18,7 +18,24 @@ class supervised_trainer:
 
         self.loss_func   = self.build_loss_function()
 
+        # Hold one batch of data to make plots while training.
+        self.monitor_data = monitor_data
 
+
+    def comparison_plots(self, plot_directory):
+
+        from matplotlib import pyplot as plt
+
+        # In this function, we take the monitoring data, run an inference step,
+        # And make plots of real vs sim responses.
+
+        # First, run the monitor data through the simulator:
+        gen_s2_pmt, gen_s2_si = simulator(self.monitor_data)
+
+        # Now, instead of computing loss, we generate plots:
+        fig = plt.figure(figsize=(16,9))
+
+        plt.plot()
 
 
 
@@ -49,15 +66,16 @@ class supervised_trainer:
 
 
 
-            s2_pmt_loss = tf.reduce_sum(tf.pow(batch["S2Pmt"] - gen_s2_pmt, 2.), axis=(1,2))
-            s2_si_loss = tf.reduce_sum(tf.pow(batch["S2Si"] - gen_s2_si, 2.), axis=(1,2,3))
+            # s2_pmt_loss = tf.reduce_sum(tf.pow(batch["S2Pmt"] - gen_s2_pmt, 2.), axis=(1,2))
+            # s2_si_loss = tf.reduce_sum(tf.pow(batch["S2Si"] - gen_s2_si, 2.), axis=(1,2,3))
+            #
+            # s2_pmt_loss = tf.reduce_mean(s2_pmt_loss)
+            # s2_si_loss = tf.reduce_mean(s2_si_loss)
 
-            s2_pmt_loss = tf.reduce_mean(s2_pmt_loss)
-            s2_si_loss = tf.reduce_mean(s2_si_loss)
-
-            # s2_pmt_loss = self.loss_func(batch["S2Pmt"],  gen_s2_pmt)
-            # s2_si_loss  = self.loss_func(batch["S2Si"],  gen_s2_si)
-            loss = s2_si_loss + s2_pmt_loss
+            s2_pmt_loss = self.loss_func(batch["S2Pmt"],  gen_s2_pmt)
+            s2_si_loss  = self.loss_func(batch["S2Si"],  gen_s2_si)
+            loss = s2_si_loss
+            # loss = s2_si_loss + s2_pmt_loss
 
         metrics['s2_pmt_loss'] = s2_pmt_loss
         metrics['s2_si_loss'] = s2_si_loss

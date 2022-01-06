@@ -112,7 +112,7 @@ class exec(object):
         if self.config.mode.name != ModeKind.train:
             return
 
-        self.trainer = self.build_trainer()
+        self.trainer = self.build_trainer(batch)
 
 
 
@@ -187,12 +187,12 @@ class exec(object):
 
         return simulator
 
-    def build_trainer(self):
+    def build_trainer(self, batch):
 
         # Shouldn't reach this portion unless training.
         from trainers import supervised_trainer
 
-        trainer = supervised_trainer(self.config.mode)
+        trainer = supervised_trainer(self.config.mode, batch)
         return trainer
 
     def restore(self):
