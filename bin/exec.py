@@ -136,7 +136,7 @@ class exec(object):
     def configure_logger(self):
 
         logger = logging.getLogger()
-
+        logger.setLevel(logging.INFO)
         # Create a handler for STDOUT, but only on the root rank:
         if not MPI_AVAILABLE or hvd.rank() == 0:
             stream_handler = logging.StreamHandler()
@@ -317,6 +317,10 @@ class exec(object):
 
 
             self.summary(metrics, self.global_step)
+
+            # Add comparison plots every iteration for now:
+            save_dir = self.save_path / pathlib.Path(f'comp/{self.global_step}/')
+            self.trainer.comparison_plots(self.simulator, save_dir)
 
             # # Add the gradients and model weights to the summary every 25 iterations:
             # if self.global_step % 25 == 0:

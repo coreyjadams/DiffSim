@@ -4,8 +4,9 @@ if MPI_AVAILABLE:
     import horovod.tensorflow as hvd
 
 import tensorflow as tf
+import numpy
 
-
+import pathlib
 
 class supervised_trainer:
 
@@ -22,22 +23,34 @@ class supervised_trainer:
         self.monitor_data = monitor_data
 
 
-    def comparison_plots(self, plot_directory):
+    def comparison_plots(self, simulator, plot_directory):
 
         from matplotlib import pyplot as plt
+
 
         # In this function, we take the monitoring data, run an inference step,
         # And make plots of real vs sim responses.
 
         # First, run the monitor data through the simulator:
-        gen_s2_pmt, gen_s2_si = simulator(self.monitor_data)
+        gen_s2_pmt, gen_s2_si = simulator(self.monitor_data['energy_deposits'])
 
         # Now, instead of computing loss, we generate plots:
-        fig = plt.figure(figsize=(16,9))
-
-        plt.plot()
 
 
+        x_ticks = numpy.arange(550)
+
+        batch_index=0
+
+        pmt_dir = plot_directory / pathlib.Path(f"pmts/")
+        pmt_dir.mkdir(parents=True, exist_ok=True)
+        for i_pmt in range(12):
+            fig = plt.figure(figsize=(16,9))
+            plt.plot(x_ticks, gen_s2_pmt[batch_index][i_pmt], label=f"Generated PMT {i_pmt} signal")
+            plt.plot(x_ticks, self.monitor_data["S2Pmt"][batch_index][i_pmt], label=f"Real PMT {i_pmt} signal")
+            plt.savefig(pmt_dir / pathlib.Path(f"pmt_{i_pmt}.png"))
+            plt.legend()
+            plt.grid(True)
+            plt.close()
 
     def build_optimizer(self):
         from config.mode import OptimizerKind
@@ -74,7 +87,7 @@ class supervised_trainer:
 
             s2_pmt_loss = self.loss_func(batch["S2Pmt"],  gen_s2_pmt)
             s2_si_loss  = self.loss_func(batch["S2Si"],  gen_s2_si)
-            loss = s2_si_loss
+            loss = s2_pmt_loss
             # loss = s2_si_loss + s2_pmt_loss
 
         metrics['s2_pmt_loss'] = s2_pmt_loss
