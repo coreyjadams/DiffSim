@@ -7,6 +7,8 @@ import tensorflow as tf
 import numpy
 
 import pathlib
+from matplotlib import pyplot as plt
+
 
 class supervised_trainer:
 
@@ -23,9 +25,75 @@ class supervised_trainer:
         self.monitor_data = monitor_data
 
 
+
+    def plot_pmts(self, plot_dir, sim_pmts, real_pmts):
+
+        x_ticks = numpy.arange(550)
+        plot_dir.mkdir(parents=True, exist_ok=True)
+        for i_pmt in range(12):
+            fig = plt.figure(figsize=(16,9))
+            plt.plot(x_ticks, sim_pmts[i_pmt], label=f"Generated PMT {i_pmt} signal")
+            plt.plot(x_ticks, real_pmts[i_pmt], label=f"Real PMT {i_pmt} signal")
+            plt.legend()
+            plt.grid(True)
+            plt.xlabel("Time Tick [us]")
+            plt.ylabel("Amplitude")
+            plt.savefig(plot_dir / pathlib.Path(f"pmt_{i_pmt}.png"))
+            plt.tight_layout()
+            plt.close()
+
+        return
+
+    def plot_sipms(self, plot_dir, sim_sipms, real_sipms):
+
+        x_ticks = numpy.arange(550)
+        plot_dir.mkdir(parents=True, exist_ok=True)
+        # Take a grid of sipm locations too:
+        for i_x in [12, 23, 35]:
+            for i_y in [12, 23, 35]:
+                fig = plt.figure(figsize=(16,9))
+                plt.plot(x_ticks, sim_sipms[i_x][i_y], label=f"Generated SiPM [{i_x}, {i_y}] signal")
+                plt.plot(x_ticks, real_sipms[i_x][i_y], label=f"Real SiPM [{i_x}, {i_y}] signal")
+                plt.legend()
+                plt.grid(True)
+                plt.xlabel("Time Tick [us]")
+                plt.ylabel("Amplitude")
+                plt.savefig(plot_dir / pathlib.Path(f"sipm_{i_x}_{i_y}.png"))
+                plt.tight_layout()
+                plt.close()
+
+    def plot_compressed_sipms(self, plot_dir, sim_sipms, real_sipms, axis):
+        
+        plot_dir.mkdir(parents=True, exist_ok=True)
+        
+        # What is the axis label for this compression?
+        if axis == 0:
+            label = "x"
+        elif axis == 1:
+            label = "y"
+        elif axis == 2:
+            label = "z"
+        else:
+            raise Exception(f"Invalid axis {axis} provided to compression plots.")
+
+        # Compress time ticks:
+        sim_comp = tf.reduce_sum(sim_sipms, axis=axis)
+
+        fig = plt.figure(figsize=(16,9))
+        plt.imshow(sim_comp)
+        plt.tight_layout()
+        plt.savefig(plot_dir / pathlib.Path(f"sim_sipm_compress_{label}.png"))
+
+        # Compress time ticks:
+        real_comp = tf.reduce_sum(real_sipms, axis=axis)
+
+        fig = plt.figure(figsize=(16,9))
+        plt.imshow(real_comp)
+        plt.tight_layout()
+        plt.savefig(plot_dir / pathlib.Path(f"real_sipm_compress_{label}.png"))
+
     def comparison_plots(self, simulator, plot_directory):
 
-        from matplotlib import pyplot as plt
 
 
         # In this function, we take the monitoring data, run an inference step,
@@ -37,26 +105,34 @@ class supervised_trainer:
         # Now, instead of computing loss, we generate plots:
 
 
-        x_ticks = numpy.arange(550)
 
         batch_index=0
 
         pmt_dir = plot_directory / pathlib.Path(f"pmts/")
-        pmt_dir.mkdir(parents=True, exist_ok=True)
-        for i_pmt in range(12):
-            fig = plt.figure(figsize=(16,9))
-            plt.plot(x_ticks, gen_s2_pmt[batch_index][i_pmt], label=f"Generated PMT {i_pmt} signal")
-            plt.plot(x_ticks, self.monitor_data["S2Pmt"][batch_index][i_pmt], label=f"Real PMT {i_pmt} signal")
-            plt.savefig(pmt_dir / pathlib.Path(f"pmt_{i_pmt}.png"))
-            plt.legend()
-            plt.grid(True)
-            plt.close()
+        self.plot_pmts(pmt_dir, gen_s2_pmt[batch_index], self.monitor_data["S2Pmt"][batch_index])
+
+        sim_data_3d  = gen_s2_si[batch_index]
+        real_data_3d = self.monitor_data["S2Si"][batch_index]
+
+
+        sipm_dir = plot_directory / pathlib.Path(f"sipms/")
+        self.plot_sipms(sipm_dir, sim_data_3d, real_data_3d)
+
+
+        # Take 2D compression views:
+        self.plot_compressed_sipms(sipm_dir, sim_data_3d, real_data_3d, axis=0)
+        self.plot_compressed_sipms(sipm_dir, sim_data_3d, real_data_3d, axis=1)
+        self.plot_compressed_sipms(sipm_dir, sim_data_3d, real_data_3d, axis=2)
+
+
+
+
 
     def build_optimizer(self):
         from config.mode import OptimizerKind
 
         if self.config.optimizer == OptimizerKind.Adam:
-            return tf.keras.optimizers.Adam()
+            return tf.keras.optimizers.Adam(0.1)
         else:
             raise Exception("Unhandled Optimizer")
 
@@ -87,8 +163,8 @@ class supervised_trainer:
 
             s2_pmt_loss = self.loss_func(batch["S2Pmt"],  gen_s2_pmt)
             s2_si_loss  = self.loss_func(batch["S2Si"],  gen_s2_si)
-            loss = s2_pmt_loss
-            # loss = s2_si_loss + s2_pmt_loss
+            # loss = s2_pmt_loss
+            loss = s2_si_loss + s2_pmt_loss
 
         metrics['s2_pmt_loss'] = s2_pmt_loss
         metrics['s2_si_loss'] = s2_si_loss

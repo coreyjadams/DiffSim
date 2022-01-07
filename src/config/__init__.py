@@ -1,5 +1,7 @@
 from .config import Config
 
+NAME = "next-diffsim"
+
 try:
     from mpi4py import MPI # this does MPI init
     import horovod.tensorflow as hvd

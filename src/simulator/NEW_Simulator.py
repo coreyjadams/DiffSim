@@ -167,10 +167,17 @@ class NEXT_Simulator(tf.keras.Model):
         xy_reshaped = tf.reshape(xy_electrons, (xy_electrons.shape[0], 1, 1, xy_electrons.shape[-1]))
 
         # For each electron, we subtract it's position from the sipm locations:
-        subtracted_values = xy_reshaped - self.sipm_locations
+        subtracted_values = tf.math.pow(xy_reshaped - self.sipm_locations, 2)
 
+        # print(subtracted_values[0])
+
+        # print(self.sipm_locations.shape)
+
+        # print(xy_reshaped[0])
+
+        # print(self.sipm_locations)
         gaussian_input = tf.reduce_sum(subtracted_values, axis=-1)
-        gaussian_input = tf.math.pow(gaussian_input, 2) / tf.pow(self.sipm_sigma, 2)
+        gaussian_input = gaussian_input/ tf.pow(self.sipm_sigma, 2)
 
         sipm_response = tf.math.exp(-gaussian_input)
 

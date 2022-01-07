@@ -37,7 +37,7 @@ src_dir = os.path.dirname(src_dir) + "/src/"
 sys.path.insert(0,src_dir)
 
 from config import Config
-from config import MPI_AVAILABLE
+from config import MPI_AVAILABLE, NAME
 
 if MPI_AVAILABLE:
     import horovod.tensorflow as hvd
@@ -64,7 +64,7 @@ class exec(object):
         self.model_name = self.config.model_name
 
         self.configure_logger()
-        logger = logging.getLogger()
+        logger = logging.getLogger(NAME)
         logger.info("")
         logger.info("\n" + OmegaConf.to_yaml(config))
 
@@ -135,7 +135,7 @@ class exec(object):
 
     def configure_logger(self):
 
-        logger = logging.getLogger()
+        logger = logging.getLogger(NAME)
         logger.setLevel(logging.INFO)
         # Create a handler for STDOUT, but only on the root rank:
         if not MPI_AVAILABLE or hvd.rank() == 0:
@@ -196,7 +196,7 @@ class exec(object):
         return trainer
 
     def restore(self):
-        logger = logging.getLogger()
+        logger = logging.getLogger(NAMENAME)
 
         name = "checkpoint/"
         if not MPI_AVAILABLE or hvd.rank() == 0:
@@ -252,7 +252,7 @@ class exec(object):
 
     def train(self):
 
-        logger = logging.getLogger()
+        logger = logging.getLogger(NAME)
 
         #
         # with self.writer.as_default():
@@ -319,8 +319,10 @@ class exec(object):
             self.summary(metrics, self.global_step)
 
             # Add comparison plots every iteration for now:
-            save_dir = self.save_path / pathlib.Path(f'comp/{self.global_step}/')
-            self.trainer.comparison_plots(self.simulator, save_dir)
+            if not MPI_AVAILABLE or hvd.rank() == 0:
+                if self.global_step % 10 == 0:
+                    save_dir = self.save_path / pathlib.Path(f'comp/{self.global_step}/')
+                    self.trainer.comparison_plots(self.simulator, save_dir)
 
             # # Add the gradients and model weights to the summary every 25 iterations:
             # if self.global_step % 25 == 0:
@@ -355,7 +357,7 @@ class exec(object):
     def analysis(self):
 
         # in the summary, we make plots and print weights, etc.
-        logger = logging.getLogger()
+        logger = logging.getLogger(NAME)
 
         try:
             self.restore()
@@ -369,7 +371,7 @@ class exec(object):
 
     def iotest(self):
 
-        logger = logging.getLogger()
+        logger = logging.getLogger(NAME)
 
 
         # Before beginning the loop, manually flush the buffer:
@@ -443,7 +445,7 @@ class exec(object):
                 self.save_weights()
 
     def interupt_handler(self, sig, frame):
-        logger = logging.getLogger()
+        logger = logging.getLogger(NAME)
         self.dataloader.shutdown()
         logger.info("Caught interrupt, exiting gracefully.")
         self.active = False
