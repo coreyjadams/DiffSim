@@ -83,6 +83,7 @@ class supervised_trainer:
         plt.imshow(sim_comp)
         plt.tight_layout()
         plt.savefig(plot_dir / pathlib.Path(f"sim_sipm_compress_{label}.png"))
+        plt.close()
 
         # Compress time ticks:
         real_comp = tf.reduce_sum(real_sipms, axis=axis)
@@ -91,6 +92,7 @@ class supervised_trainer:
         plt.imshow(real_comp)
         plt.tight_layout()
         plt.savefig(plot_dir / pathlib.Path(f"real_sipm_compress_{label}.png"))
+        plt.close()
 
     def comparison_plots(self, simulator, plot_directory):
 

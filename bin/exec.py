@@ -196,7 +196,7 @@ class exec(object):
         return trainer
 
     def restore(self):
-        logger = logging.getLogger(NAMENAME)
+        logger = logging.getLogger(NAME)
 
         name = "checkpoint/"
         if not MPI_AVAILABLE or hvd.rank() == 0:
@@ -319,8 +319,8 @@ class exec(object):
             self.summary(metrics, self.global_step)
 
             # Add comparison plots every iteration for now:
-            if not MPI_AVAILABLE or hvd.rank() == 0:
-                if self.global_step % 10 == 0:
+            if self.global_step % self.config.run.image_iteration == 0:
+                if not MPI_AVAILABLE or hvd.rank() == 0:
                     save_dir = self.save_path / pathlib.Path(f'comp/{self.global_step}/')
                     self.trainer.comparison_plots(self.simulator, save_dir)
 

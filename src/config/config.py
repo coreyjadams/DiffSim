@@ -32,6 +32,7 @@ class Run:
     precision:          Precision   = Precision.float32
     profile:            bool        = False
     checkpoint:         int         = 200
+    image_iteration:    int         = 25
 
 cs.store(group="run", name="base_run", node=Run)
 
