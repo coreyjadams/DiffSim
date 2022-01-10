@@ -23,7 +23,7 @@ class NEXT_Simulator(tf.keras.Model):
         )
 
         # Trainable Parameters for diffusion:
-        self.diffusion_scale = tf.Variable([1.0, 1.0, 0.55])
+        self.diffusion_scale = tf.Variable([1.0, 1.0, 0.07])
 
         self.electron_normal_distribution = tfp.distributions.Normal(
             loc   = 0.0,
@@ -52,28 +52,50 @@ class NEXT_Simulator(tf.keras.Model):
 
         # Sipms are generally a gaussian-like response to incident charge.
         # We set a trainable sigma in x and y and then fine tune that.
-        self.sipm_sigma = tf.Variable(1.0)
+        self.sipm_sigma = tf.Variable(1.)
 
         # We need a small network to model the EL amplification.
         # Takes an XY location and provides and overall normalization
         # to apply to all sipms (same per sipm)
+
+        # Overall, adc per electron into the EL region for Sipms:
+        self.sipm_response_normalization = tf.Variable(100.0)
+
+        #  Overall light production (normalization of PSF) is modulated by a network:
+        self.s2si_layer1 = tf.keras.layers.Dense(units=28, activation="sigmoid")
+        self.s2si_layer2 = tf.keras.layers.Dense(units=1, activation="tanh")
+        # This network above outputs a value from -1 to 1.  
+        # We multiply by 0.5, add it to 1.0 manually, and the output is from 0.5 to 1.5
+        # And then it is multiplicative to the total response normalization above.  
+        # So, this becomes a modulation up to a factor 
+
 
 
         # PMT Response scale:
         self.pmt_response_scale = tf.Variable(tf.ones(shape=[12]))
 
         # Sipm Response scale:
+        # (sipm by sipm variations)
         self.si_response_scale = tf.Variable(tf.ones(shape=[47*47]))
 
 
         # Lifetime variables:
-        self.lifetime = tf.Variable(12000.)
-        self.lifetime_sharpness = tf.constant(0.001)
-        self.uniform_sampler = tfp.distributions.Uniform()
+        self.lifetime = tf.Variable(3000.)
+
 
         # Handling the z-differentiation with a gaussian response along Z for each sensor.
-        self.bin_sigma = tf.constant(0.1)
-        self.gaussian_norm = tf.constant(1./(self.bin_sigma * 2.5066282746) )
+        # In order to have a guassian response that is fairly normalized, this should be not
+        # too small compared to the bin width.
+        # 
+        # N.B. : Fluctuations in the normalization occur if the gaussian varies quickly 
+        # with respect to the sampling frequency. Practicially, with 1 us bins, 0.2 is a good range.
+        # Higher sigma smears the signal to neighboring ticks more, while lower sigma
+        # introduces small fluctuations based on sampling inefficiency
+        # 
+        # On average, 0.2 puts 75% of the response in the right bin, with 1 to 3% normalization wiggle.
+        self.bin_sigma = tf.constant(0.2)
+        # Norm is 1/(sigma * sqrt(2pi))
+        self.gaussian_norm = tf.constant(1./(tf.sqrt(self.bin_sigma) * 2.5066282746) )
 
     def generate_summary_dict(self):
         # Add relevant objects to a dictionary for a summary:
@@ -85,12 +107,16 @@ class NEXT_Simulator(tf.keras.Model):
         metrics['diffusion/z'] = self.diffusion_scale[2]
 
         metrics['sipm_psf']    = self.sipm_sigma
+        metrics['sipm_amplitude'] = self.sipm_response_normalization
 
-        metrics['lifetime']    = self.lifetime.numpy()
+        metrics['lifetime']    = self.lifetime
 
         # Mean responses:
         metrics['response_scale/pmt'] = tf.reduce_mean(self.pmt_response_scale)
+        metrics['response_scale/pmt_var'] = tf.math.reduce_std(self.pmt_response_scale)
+
         metrics['response_scale/sipm'] = tf.reduce_mean(self.si_response_scale)
+        metrics['response_scale/sipm_var'] = tf.math.reduce_std(self.si_response_scale)
 
         return metrics
 
@@ -135,17 +161,13 @@ class NEXT_Simulator(tf.keras.Model):
         # exp_input = tf.stack( [tf.range(self.n_ticks,dtype=tf.dtypes.float32) for _z in z_ticks ])
         exp_input = tf.linspace(start=starts, stop=stops, num=550,axis=-1)
 
-
         # print(exp_input.shape)
         # Apply the exponential, transpose, and make sparse:
 
-        exp_values = self.gaussian_norm * tf.exp( -(exp_input - z_ticks)**2 / self.bin_sigma)
-        #
-        # print(exp_values.shape)
-        # print(weight.shape)
-        # print((tf.reshape(weight, weight.shape + (1,))*exp_values).shape)
+        exp_values = self.gaussian_norm * tf.exp( -(exp_input - z_ticks)**2 / (2*self.bin_sigma))
 
-        # Multiple by the weight of each electron:
+        #
+        # Multiple by the weight of each electron (the lifetime weight):
         exp_values = tf.reshape(weight, weight.shape + (1,))*exp_values
 
         z_values_sparse = tf.sparse.from_dense(tf.transpose(exp_values))
@@ -177,10 +199,24 @@ class NEXT_Simulator(tf.keras.Model):
 
         # print(self.sipm_locations)
         gaussian_input = tf.reduce_sum(subtracted_values, axis=-1)
-        gaussian_input = gaussian_input/ tf.pow(self.sipm_sigma, 2)
+        gaussian_input = gaussian_input/ (2* tf.pow(self.sipm_sigma, 2))
 
         sipm_response = tf.math.exp(-gaussian_input)
 
+        # print(self.sipm_sigma)
+        sipm_norm = 1. / (tf.pow(self.sipm_sigma, 2) * 2 * 3.14159)
+
+        sipm_response *= sipm_norm
+        # print(sipm_response.shape)
+        # print("Mean response integral: ", tf.reduce_mean(tf.reduce_sum(sipm_response, axis=[1,2])))
+
+        # The total sipm response, per electron, has to have an amplitude.
+        # Regress this with a neural network
+        sipm_amplitude  = self.sipm_response_normalization * self.s2si_call_network(xy_electrons)
+        # Reshape to make the broadcasting work:
+        sipm_amplitude = tf.reshape(sipm_amplitude, (sipm_amplitude.shape[0], 1, 1))
+
+        sipm_response *= sipm_amplitude
 
 
         # Here, we flatten the sipm_resonse matrix to enable the matmul:
@@ -205,14 +241,12 @@ class NEXT_Simulator(tf.keras.Model):
         x = self.s2pmt_layer2(x)
         return x*self.pmt_response_scale
 
-    # def s2si_call_network(self,xy_electrons):
-    #     x = self.s2si_layer1(xy_electrons)
-    #     x = self.s2si_layer2(x)
-    #     x = self.s2si_layer3(x)
-    #     x = self.s2si_layer4(x)
-    #     # x = tf.reshape(x, (-1, 47, 47))
-    #     # print(x.shape)
-    #     return x*tf.math.pow(self.si_response_scale, 2)
+
+    def s2si_call_network(self,xy_electrons):
+        x = self.s2si_layer1(xy_electrons)
+        x = self.s2si_layer2(x)
+        
+        return 1. + 0.5*x
 
 
     # @profile
@@ -286,14 +320,11 @@ class NEXT_Simulator(tf.keras.Model):
         z_position = _input_electrons[:,2]
         # We simply compute a weight, per electron, dependent on the lifetime
 
-        # One random number per electron:
-        randoms = self.uniform_sampler.sample(z_position.shape[0])
+        probability = tf.math.exp( - z_position / self.lifetime)
+        # probability = (1/self.lifetime) * tf.math.exp( - z_position / self.lifetime)
 
-        threshold = tf.math.exp( - z_position / self.lifetime) - randoms
-        threshold /= self.lifetime_sharpness
-        # This maps each electron into roughly a zero or one value
-        weight = tf.math.sigmoid(threshold)
-        return weight
+        return probability
+
 
 
     # @profile
