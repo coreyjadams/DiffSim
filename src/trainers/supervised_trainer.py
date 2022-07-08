@@ -10,6 +10,7 @@ import pathlib
 from matplotlib import pyplot as plt
 
 
+
 class supervised_trainer:
 
     def __init__(self, config, monitor_data):
@@ -156,7 +157,19 @@ class supervised_trainer:
         # First, run the monitor data through the simulator:
         gen_s2_pmt, gen_s2_si = simulator(self.monitor_data['energy_deposits'])
 
-        # Now, instead of computing loss, we generate plots:
+        # Save the raw data into a file:
+        print(plot_directory)
+        plot_directory.mkdir(parents=True, exist_ok=True)
+        numpy.savez_compressed(plot_directory / pathlib.Path(f"output_arrays.npz"),
+            real_pmts  = self.monitor_data["S2Pmt"],
+            gen_pmts   = gen_s2_pmt,
+            real_sipms = self.monitor_data["S2Si"],
+            gen_sipms  = gen_s2_si,
+
+            )
+
+
+        # # Now, instead of computing loss, we generate plots:
 
 
 
@@ -185,8 +198,12 @@ class supervised_trainer:
     def build_optimizer(self):
         from config.mode import OptimizerKind
 
+        lr = self.config.learning_rate
+
         if self.config.optimizer == OptimizerKind.Adam:
-            return tf.keras.optimizers.Adam(0.05)
+            return tf.keras.optimizers.Adam(lr)
+        elif self.config.optimizer == OptimizerKind.SGD:
+            return tf.keras.optimizers.SGD(lr)
         else:
             raise Exception("Unhandled Optimizer")
 
@@ -197,6 +214,40 @@ class supervised_trainer:
             return tf.keras.losses.MeanSquaredError()
         else:
             raise Exception("Unhandled Loss Kind")
+
+    def sipm_loss(self, real_sipms, sim_sipms):
+
+        # This loss function is similar to mean absolute error,
+        # Except it does not count any location where both input and 
+        # output are not zero:
+        
+        diff = real_sipms - sim_sipms
+            
+        loss = diff**2
+
+        max_loc = 30
+        print("real_sipms: ", real_sipms[0,0,max_loc-5 : max_loc + 5])
+        print("sim_sipms: ", sim_sipms[0,0,max_loc-5 : max_loc + 5])
+        print("loss: ", loss[0,0,max_loc-5 : max_loc + 5])
+
+
+        return tf.pow(self.loss_func(real_sipms, sim_sipms), 3)
+
+        non_zero_input = real_sipms != 0
+        non_zero_gen   = sim_sipms  != 0
+
+        zero = tf.constant(0, dtype=tf.float32)
+        where_input = tf.not_equal(real_sipms, zero)
+
+        joint_locations = tf.math.logical_and(non_zero_input, non_zero_gen)
+
+
+
+        # Select the locations from both tensors:
+        selected_input = tf.boolean_mask(real_sipms, joint_locations)
+        selected_gen   = tf.boolean_mask(sim_sipms, joint_locations)
+
+        return self.loss_func(selected_input, selected_gen)
 
     def train_iteration(self, simulator, batch):
 
@@ -215,17 +266,22 @@ class supervised_trainer:
             # s2_pmt_loss = tf.reduce_mean(s2_pmt_loss)
             # s2_si_loss = tf.reduce_mean(s2_si_loss)
 
-            s2_pmt_loss = 1e-2 * self.loss_func(batch["S2Pmt"],  gen_s2_pmt)
-            s2_si_loss  = 1e2  * self.loss_func(batch["S2Si"],  gen_s2_si)
-            # loss = s2_pmt_loss
-            loss = s2_si_loss + s2_pmt_loss
+            s2_pmt_loss = self.sipm_loss(batch["S2Pmt"],  gen_s2_pmt)
+            # s2_si_loss  = self.sipm_loss(batch["S2Si"],  gen_s2_si)
+            loss = s2_pmt_loss
+            # loss = s2_si_loss
+            # loss = s2_si_loss + s2_pmt_loss
 
-        metrics['s2_pmt_loss'] = s2_pmt_loss
-        metrics['s2_si_loss'] = s2_si_loss
+            reg = simulator.regularization()
+            # loss += reg
+
+        metrics['loss/s2_pmt_loss'] = s2_pmt_loss
+        # metrics['loss/s2_si_loss'] = s2_si_loss
+        metrics['loss/regularization'] = reg
 
         # Combine losses
 
-        metrics['loss'] = loss
+        metrics['loss/loss'] = loss
 
 
         if MPI_AVAILABLE:

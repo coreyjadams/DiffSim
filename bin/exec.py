@@ -118,11 +118,11 @@ class exec(object):
 
 
 
-
         if not MPI_AVAILABLE or hvd.rank() == 0:
             # self.writer = tf.summary.create_file_writer(self.save_path)
             self.writer = tf.summary.create_file_writer(self.save_path + "/log/")
 
+        # self.build_hp(self.writer)
 
         # Now, cast to pathlib:
         self.save_path = pathlib.Path(self.save_path)
@@ -133,6 +133,35 @@ class exec(object):
             with open(pathlib.Path('config.snapshot.yaml'), 'w') as cfg:
                 OmegaConf.save(config=self.config, f=cfg)
 
+    # def build_hp(self, _writer):
+        
+    #     # Import the hparams api:
+    #     from tensorboard.plugins.hparams import api as hp
+
+    #     hparams = {
+    #         'iterations' : self.config.run.iterations,
+    #         'minibatch_size' : self.config.run.minibatch_size,
+    #     }
+
+
+    #     metrics = {
+    #         'loss_sipm' : 0.0,
+    #         'loss_pmt'  : 0.0,
+    #     }
+
+    #     print(hparams.keys())
+    #     print(metrics.keys())
+
+    #     with tf.summary.create_file_writer('logs/hparam_tuning').as_default():
+    #       hp.hparams_config(
+    #         hparams=hparams.keys(),
+    #         metrics=metrics.keys(),
+    #       )
+    #     hp.hparams(hparams)  # record the values used in this trial
+    #     accuracy = train_test_model(hparams)
+    #     tf.summary.scalar(METRIC_ACCURACY, accuracy, step=1)
+
+
     def configure_logger(self):
 
         logger = logging.getLogger(NAME)
@@ -142,7 +171,7 @@ class exec(object):
             stream_handler = logging.StreamHandler()
             formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
             stream_handler.setFormatter(formatter)
-            handler = handlers.MemoryHandler(capacity = 10, target=stream_handler)
+            handler = handlers.MemoryHandler(capacity = 5, target=stream_handler)
             logger.addHandler(handler)
             # Add a file handler:
 
@@ -150,7 +179,7 @@ class exec(object):
             log_file = self.config.save_path + "/process.log"
             file_handler = logging.FileHandler(log_file)
             file_handler.setFormatter(formatter)
-            file_handler = handlers.MemoryHandler(capacity=10, target=file_handler)
+            file_handler = handlers.MemoryHandler(capacity=5, target=file_handler)
             logger.addHandler(file_handler)
 
 
@@ -290,6 +319,9 @@ class exec(object):
         best_energy = 999
 
         dl_iterable = self.dataloader.iterate()
+        
+        logger.warning("NEED TO MOVE BATCH LOADING BACK INTO THE LOOP!")
+        batch = next(dl_iterable)
 
         while self.global_step < self.config.run.iterations:
 
@@ -303,7 +335,6 @@ class exec(object):
             metrics = {}
             start = time.time()
 
-            batch = next(dl_iterable)
 
             metrics["io_time"] = time.time() - start
 
@@ -334,7 +365,7 @@ class exec(object):
 
 
             if self.global_step % 1 == 0:
-                logger.info(f"step = {self.global_step}, loss = {metrics['loss'].numpy():.3f}")
+                logger.info(f"step = {self.global_step}, loss = {metrics['loss/loss'].numpy():.3f}")
                 logger.info(f"time = {metrics['time']:.3f} ({metrics['io_time']:.3f} io)")
 
             # Iterate:

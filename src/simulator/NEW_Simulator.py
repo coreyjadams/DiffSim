@@ -1,7 +1,7 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-
+MAX_ELECTRONS = 2000
 class NEXT_Simulator(tf.keras.Model):
 
     def __init__(self):
@@ -15,15 +15,15 @@ class NEXT_Simulator(tf.keras.Model):
                 0.0,
                 0.0,
             ],
-            scale_diag = [
+            scale_diag = tf.Variable([
                 1.0,
                 1.0,
                 1.0,
-            ]
+            ])
         )
 
         # Trainable Parameters for diffusion:
-        self.diffusion_scale = tf.Variable([1.0, 1.0, 0.07])
+        self.diffusion_scale = tf.constant([1.0, 1.0, 1.0])
 
         self.electron_normal_distribution = tfp.distributions.Normal(
             loc   = 0.0,
@@ -47,8 +47,12 @@ class NEXT_Simulator(tf.keras.Model):
         self.sipm_locations = tf.reshape(sipm_locations, (1,) + sipm_locations.shape)
 
         # Here is the pmt network:
-        self.s2pmt_layer1 = tf.keras.layers.Dense(units=28, activation="sigmoid")
-        self.s2pmt_layer2 = tf.keras.layers.Dense(units=12, activation="sigmoid")
+        self.pmt_network = tf.keras.Sequential([
+                tf.keras.layers.Dense(units=28, activation="sigmoid"),
+                tf.keras.layers.Dense(units=28, activation="sigmoid"),
+                tf.keras.layers.Dense(units=28, activation="sigmoid"),
+                tf.keras.layers.Dense(units=12, activation="sigmoid"),
+            ])
 
         # Sipms are generally a gaussian-like response to incident charge.
         # We set a trainable sigma in x and y and then fine tune that.
@@ -60,6 +64,8 @@ class NEXT_Simulator(tf.keras.Model):
 
         # Overall, adc per electron into the EL region for Sipms:
         self.sipm_response_normalization = tf.Variable(100.0)
+
+        self.el_distance = tf.Variable(1.)
 
         #  Overall light production (normalization of PSF) is modulated by a network:
         self.s2si_layer1 = tf.keras.layers.Dense(units=28, activation="sigmoid")
@@ -102,12 +108,14 @@ class NEXT_Simulator(tf.keras.Model):
 
         metrics = {}
 
+
         metrics['diffusion/x'] = self.diffusion_scale[0]
         metrics['diffusion/y'] = self.diffusion_scale[1]
         metrics['diffusion/z'] = self.diffusion_scale[2]
 
         metrics['sipm_psf']    = self.sipm_sigma
         metrics['sipm_amplitude'] = self.sipm_response_normalization
+        metrics['el_distance']    = self.el_distance
 
         metrics['lifetime']    = self.lifetime
 
@@ -127,7 +135,8 @@ class NEXT_Simulator(tf.keras.Model):
 
         reg += tf.reduce_mean(tf.math.pow(self.pmt_response_scale - 1, 2))
 
-    # @profile
+        return reg
+
     # @tf.function
     def s2_call(self, inputs, diffusion_weight, training=True):
 
@@ -144,8 +153,6 @@ class NEXT_Simulator(tf.keras.Model):
         return pmt_response, sipm_response
 
 
-    # @tf.function
-    # @profile
     def s2_subcall(self, electrons, weight):
         # Pull out z_ticks:
         z_ticks = electrons[:,2]
@@ -180,7 +187,7 @@ class NEXT_Simulator(tf.keras.Model):
 
         # For the sipm response, we are actually applying a
         # gaussian for the mean value of the response.
-
+        
 
 
         # Here, we compute an gaussian point spread function
@@ -189,33 +196,31 @@ class NEXT_Simulator(tf.keras.Model):
         xy_reshaped = tf.reshape(xy_electrons, (xy_electrons.shape[0], 1, 1, xy_electrons.shape[-1]))
 
         # For each electron, we subtract it's position from the sipm locations:
-        subtracted_values = tf.math.pow(xy_reshaped - self.sipm_locations, 2)
+        r = tf.math.pow(xy_reshaped - self.sipm_locations, 2)
 
-        # print(subtracted_values[0])
+        total_distance = tf.pow(self.el_distance,2) + tf.reduce_sum(r, axis=-1)
 
-        # print(self.sipm_locations.shape)
+        # We apply a factor of 1/r^2 to the light to each sipm.
+        sipm_response = 1/(total_distance+1e-7) # Add a small threshold
 
-        # print(xy_reshaped[0])
-
-        # print(self.sipm_locations)
-        gaussian_input = tf.reduce_sum(subtracted_values, axis=-1)
-        gaussian_input = gaussian_input/ (2* tf.pow(self.sipm_sigma, 2))
-
-        sipm_response = tf.math.exp(-gaussian_input)
+        # gaussian_input = tf.reduce_sum(r, axis=-1)
+        # gaussian_input = gaussian_input/ (2* tf.pow(self.sipm_sigma, 2))
+        # sipm_response = tf.math.exp(-gaussian_input)
 
         # print(self.sipm_sigma)
-        sipm_norm = 1. / (tf.pow(self.sipm_sigma, 2) * 2 * 3.14159)
+        # sipm_norm = 1. / (tf.pow(self.sipm_sigma, 2) * 2 * 3.14159)
 
-        sipm_response *= sipm_norm
+        # sipm_response *= sipm_norm
         # print(sipm_response.shape)
         # print("Mean response integral: ", tf.reduce_mean(tf.reduce_sum(sipm_response, axis=[1,2])))
 
         # The total sipm response, per electron, has to have an amplitude.
         # Regress this with a neural network
         sipm_amplitude  = self.sipm_response_normalization * self.s2si_call_network(xy_electrons)
+        # print(sipm_amplitude.shape)
         # Reshape to make the broadcasting work:
         sipm_amplitude = tf.reshape(sipm_amplitude, (sipm_amplitude.shape[0], 1, 1))
-
+        # print(sipm_response.shape)
         sipm_response *= sipm_amplitude
 
 
@@ -236,12 +241,15 @@ class NEXT_Simulator(tf.keras.Model):
         return pmt_result, sipm_result
 
     # @profile
+    @tf.function
     def s2pmt_call_network(self,xy_electrons):
-        x = self.s2pmt_layer1(xy_electrons)
-        x = self.s2pmt_layer2(x)
-        return x*self.pmt_response_scale
+        x = self.pmt_network(xy_electrons)
+
+        return x
+        # return x*self.pmt_response_scale
 
 
+    @tf.function
     def s2si_call_network(self,xy_electrons):
         x = self.s2si_layer1(xy_electrons)
         x = self.s2si_layer2(x)
@@ -283,7 +291,6 @@ class NEXT_Simulator(tf.keras.Model):
         MAX_DEPOSITIONS = n_electrons.shape[-1]
 
         z = positions[:,:,-1]
-
 
 
         sqrt_z = tf.math.sqrt(z)
@@ -337,7 +344,6 @@ class NEXT_Simulator(tf.keras.Model):
 
         return selected_electrons
 
-    # @profile
     def call(self, energy_depositions, training=True):
         n_electrons, positions = self.generate_electrons(energy_depositions)
         diffused_electrons = self.diffuse_electrons(n_electrons, positions)

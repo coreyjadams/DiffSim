@@ -34,6 +34,7 @@ class Train(Mode):
     optimizer:              OptimizerKind = OptimizerKind.Adam
     loss:                   Loss          = Loss.MSE
     name:                   ModeKind      = ModeKind.train
+    learning_rate:          float         = 0.1
 
 @dataclass
 class Inference(Mode):

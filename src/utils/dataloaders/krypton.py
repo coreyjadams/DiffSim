@@ -152,7 +152,7 @@ class krypton:
         return output_data
 
     def file_list(self,
-        shuffle       : bool = True):
+        shuffle       : bool = False):
         '''
         Loop over and yield pairs of connected pmap and kdst files.
 
