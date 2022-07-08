@@ -8,6 +8,11 @@ import pickle
 # For database reads:
 import pandas as pd
 
+
+import logging
+from logging import handlers
+
+
 # For configuration:
 from omegaconf import DictConfig, OmegaConf
 import hydra
@@ -18,15 +23,11 @@ hydra.output_subdir = None
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
-# os.environ['TF_XLA_FLAGS'] = "--tf_xla_auto_jit=fusible"
 
-import tensorflow as tf
-# tf.random.set_seed(2)
+from jax import random
+import jax.numpy as numpy
+import jax.tree_util as tree_util
 
-
-
-import logging
-from logging import handlers
 
 
 
@@ -94,17 +95,20 @@ class exec(object):
             return
 
 
-        self.simulator   = self.build_simulator()
         # Run a forward pass once:
         batch = next(self.dataloader.iterate())
+        key = random.PRNGKey(0)
+        key, subkey = random.split(key)
+        self.simulator_fn, self.simulator_params = self.build_simulator(batch, subkey)
 
+        key, subkey = random.split(key)
         # Run a forward pass but throw away the results:
-        self.simulator(batch['energy_deposits'])
+        self.simulator_fn(batch['energy_deposits'], self.simulator_params, subkey)
 
         n_parameters = 0
-        for p in self.simulator.trainable_variables:
-            n_parameters += tf.reduce_prod(p.shape)
-
+        flat_params, _ = tree_util.tree_flatten(self.simulator_params)
+        for p in flat_params:
+            n_parameters += numpy.prod(numpy.asarray(p.shape))
         logger.info(f"Number of parameters in this network: {n_parameters}")
 
 
@@ -112,15 +116,15 @@ class exec(object):
         if self.config.mode.name != ModeKind.train:
             return
 
-        self.trainer = self.build_trainer(batch)
+        self.trainer = self.build_trainer(batch, self.simulator_fn, self.simulator_params)
 
 
 
 
-
-        if not MPI_AVAILABLE or hvd.rank() == 0:
-            # self.writer = tf.summary.create_file_writer(self.save_path)
-            self.writer = tf.summary.create_file_writer(self.save_path + "/log/")
+        # TODO: network snapshots
+        # if not MPI_AVAILABLE or hvd.rank() == 0:
+        #     # self.writer = tf.summary.create_file_writer(self.save_path)
+        #     self.writer = tf.summary.create_file_writer(self.save_path + "/log/")
 
         # self.build_hp(self.writer)
 
@@ -164,35 +168,34 @@ class exec(object):
 
     def configure_logger(self):
 
+        print("Configuring logger")
+
         logger = logging.getLogger(NAME)
-        logger.setLevel(logging.INFO)
-        # Create a handler for STDOUT, but only on the root rank:
+
+        # Create a handler for STDOUT, but only on the root rank.
+        # If not distributed, we still get 0 passed in here.
         if not MPI_AVAILABLE or hvd.rank() == 0:
-            stream_handler = logging.StreamHandler()
-            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+            stream_handler = logging.StreamHandler(sys.stdout)
+            formatter = logging.Formatter('%(asctime)s ----- %(levelname)s - %(message)s')
             stream_handler.setFormatter(formatter)
-            handler = handlers.MemoryHandler(capacity = 5, target=stream_handler)
+            handler = handlers.MemoryHandler(capacity = 0, target=stream_handler)
             logger.addHandler(handler)
-            # Add a file handler:
 
             # Add a file handler too:
             log_file = self.config.save_path + "/process.log"
             file_handler = logging.FileHandler(log_file)
             file_handler.setFormatter(formatter)
-            file_handler = handlers.MemoryHandler(capacity=5, target=file_handler)
+            file_handler = handlers.MemoryHandler(capacity=10, target=file_handler)
             logger.addHandler(file_handler)
 
-
-            logger.setLevel(logging.DEBUG)
-            # fh = logging.FileHandler('run.log')
-            # fh.setLevel(logging.DEBUG)
-            # logger.addHandler(fh)
+            logger.setLevel(logging.INFO)
         else:
             # in this case, MPI is available but it's not rank 0
             # create a null handler
             handler = logging.NullHandler()
             logger.addHandler(handler)
-            logger.setLevel(logging.DEBUG)
+            logger.setLevel(logging.INFO)
+
 
     def build_dataloader(self):
 
@@ -209,19 +212,18 @@ class exec(object):
 
         return dl
 
-    def build_simulator(self):
-        from simulator.NEW_Simulator import NEXT_Simulator
+    def build_simulator(self, batch, subkey):
+        from simulator.NEW_Simulator import simulate_pmts, init_params
 
-        simulator = NEXT_Simulator()
+        # return the function but return initialized params:
+        return simulate_pmts, init_params(subkey, batch)
 
-        return simulator
-
-    def build_trainer(self, batch):
+    def build_trainer(self, batch, fn, params):
 
         # Shouldn't reach this portion unless training.
         from trainers import supervised_trainer
 
-        trainer = supervised_trainer(self.config.mode, batch)
+        trainer = supervised_trainer(self.config.mode, batch, fn, params)
         return trainer
 
     def restore(self):
@@ -272,12 +274,13 @@ class exec(object):
 
     def set_compute_parameters(self):
         # tf.keras.backend.set_floatx(DEFAULT_TENSOR_TYPE)
-        tf.debugging.set_log_device_placement(False)
-        tf.config.run_functions_eagerly(False)
+        # tf.debugging.set_log_device_placement(False)
+        # tf.config.run_functions_eagerly(False)
 
-        physical_devices = tf.config.list_physical_devices('GPU')
-        for device in physical_devices:
-            tf.config.experimental.set_memory_growth(device, True)
+        # physical_devices = tf.config.list_physical_devices('GPU')
+        # for device in physical_devices:
+            # tf.config.experimental.set_memory_growth(device, True)
+        return 
 
     def train(self):
 
@@ -338,22 +341,23 @@ class exec(object):
 
             metrics["io_time"] = time.time() - start
 
-            train_metrics = self.trainer.train_iteration(self.simulator, batch)
+            train_metrics = self.trainer.train_iteration(batch, self.global_step)
             metrics.update(train_metrics)
+
 
             metrics['time'] = time.time() - start
 
-            simulator_metrics = self.simulator.generate_summary_dict()
-            metrics.update(simulator_metrics)
+            # simulator_metrics = self.simulator.generate_summary_dict()
+            # metrics.update(simulator_metrics)
 
 
-            self.summary(metrics, self.global_step)
+            # self.summary(metrics, self.global_step)
 
-            # Add comparison plots every iteration for now:
-            if self.global_step % self.config.run.image_iteration == 0:
-                if not MPI_AVAILABLE or hvd.rank() == 0:
-                    save_dir = self.save_path / pathlib.Path(f'comp/{self.global_step}/')
-                    self.trainer.comparison_plots(self.simulator, save_dir)
+            # # Add comparison plots every iteration for now:
+            # if self.global_step % self.config.run.image_iteration == 0:
+            #     if not MPI_AVAILABLE or hvd.rank() == 0:
+            #         save_dir = self.save_path / pathlib.Path(f'comp/{self.global_step}/')
+            #         self.trainer.comparison_plots(self.simulator, save_dir)
 
             # # Add the gradients and model weights to the summary every 25 iterations:
             # if self.global_step % 25 == 0:
@@ -365,7 +369,7 @@ class exec(object):
 
 
             if self.global_step % 1 == 0:
-                logger.info(f"step = {self.global_step}, loss = {metrics['loss/loss'].numpy():.3f}")
+                logger.info(f"step = {self.global_step}, loss = {metrics['loss/loss']:.3f}")
                 logger.info(f"time = {metrics['time']:.3f} ({metrics['io_time']:.3f} io)")
 
             # Iterate:
@@ -373,7 +377,8 @@ class exec(object):
 
             if self.config.run.checkpoint % self.global_step == 0:
                 if not MPI_AVAILABLE or hvd.rank() == 0:
-                    self.save_weights()
+                    # TODO here
+                    # self.save_weights()
                     pass
 
             if self.profile:
@@ -381,9 +386,10 @@ class exec(object):
                     tf.profiler.experimental.stop()
                     tf.summary.trace_off()
 
-        # Save the weights at the very end:
-        if not MPI_AVAILABLE or hvd.rank() == 0:
-            self.save_weights()
+        #TODO HERE
+        # # Save the weights at the very end:
+        # if not MPI_AVAILABLE or hvd.rank() == 0:
+        #     self.save_weights()
 
     def analysis(self):
 
@@ -473,7 +479,8 @@ class exec(object):
         if not MPI_AVAILABLE or hvd.rank() == 0:
             from config.mode import ModeKind
             if self.config.mode.name == ModeKind.train:
-                self.save_weights()
+                # self.save_weights()
+                pass
 
     def interupt_handler(self, sig, frame):
         logger = logging.getLogger(NAME)
@@ -484,7 +491,6 @@ class exec(object):
 
 @hydra.main(config_path="../src/config", config_name="config")
 def main(cfg : Config) -> None:
-
 
     # Prepare directories:
     work_dir = pathlib.Path(cfg.save_path)
@@ -511,6 +517,8 @@ def main(cfg : Config) -> None:
 
 if __name__ == "__main__":
     import sys
+
     if "--help" not in sys.argv and "--hydra-help" not in sys.argv:
-        sys.argv += ['hydra.run.dir=.', 'hydra/job_logging=disabled']
+        sys.argv += ['hydra.run.dir=.', 'hydra/job_logging=disabled', 'hydra/hydra_logging=disabled']
+        print(sys.argv)
     main()
