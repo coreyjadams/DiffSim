@@ -26,7 +26,7 @@ class Precision(Enum):
 class Run:
     distributed:        bool        = True
     compute_mode:       ComputeMode = ComputeMode.GPU
-    iterations:         int         = 50
+    iterations:         int         = 500
     minibatch_size:     int         = 16
     id:                 str         = MISSING
     precision:          Precision   = Precision.float32
@@ -40,7 +40,7 @@ cs.store(group="run", name="base_run", node=Run)
 cs.store(
     name="disable_hydra_logging",
     group="hydra/job_logging",
-    node={"version": 1, "disable_existing_loggers": False, "root": {"handlers": []}},
+    node={"version": 1, "disable_existing_loggers": True, "root": {"handlers": []}},
 )
 
 
