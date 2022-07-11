@@ -29,14 +29,18 @@ def simulate_pmts(energy_depositions, parameters, key):
     
     diffused_xy = diffused[:,:,:,0:2]
     diffused_z  = diffused[:,:,:,2:]
-    
+
+
     # Compute the PMT response:
     pmt_response = batch_pmt_nn_apply(parameters["pmt_network"], diffused_xy)**2
+
 
     pmt_response = pmt_response * (parameters["pmt_dynamic_range"])**2
 
     # Compute the waveforms:
-    pmt_waveforms = batch_build_waveforms(pmt_response, diffused_z, lifetime, 0.2)
+    pmt_waveforms = batch_build_waveforms(
+        pmt_response, diffused_z, lifetime, 0.1)
+        # pmt_response, diffused_z, lifetime, parameters["waveform_sigma"])
     # Sum over the individual depositions:
     pmt_waveforms = pmt_waveforms.sum(axis=1)
     return pmt_waveforms
@@ -58,10 +62,11 @@ def init_params(key, example_input):
     output_size, pmt_network_params = pmt_nn_init(key, pmt_input_shape)
 
     parameters = {
-        "diffusion"   : np.ones(3),
+        "diffusion"   : 0.1*np.ones(3),
         "lifetime"    : 5000*np.ones(1),
         "pmt_network" : pmt_network_params,
         "pmt_dynamic_range" : np.ones(12),
+        "waveform_sigma" : np.asarray(0.1)
     }
 
     return parameters
@@ -153,10 +158,10 @@ def compute_lifetime(electrons_batch, _lifetime, n_valid_batch):
 
 # Define the PMT network and it's worker functions:
 pmt_nn_init, pmt_nn_apply = stax.serial(
-    stax.Dense(28), stax.Sigmoid,
-    stax.Dense(28), stax.Sigmoid,
-    stax.Dense(28), stax.Sigmoid,
-    stax.Dense(12), stax.LeakyRelu
+    # stax.Dense(28), stax.Tanh,
+    # stax.Dense(28), stax.Tanh,
+    stax.Dense(28), stax.Tanh,
+    stax.Dense(12), stax.Tanh,
 )
 
 
@@ -175,12 +180,13 @@ def build_waveforms(_sensor_response, _z_positions, _weights, _bin_sigma):
     
     n_electrons = _z_positions.shape[0]
     # Build a range for the exponential input:
-    starts = np.zeros(shape=(n_electrons)) + 0.5
-    stops  = np.ones(shape=(n_electrons)) * (_n_ticks -1) + 0.5
+    starts = np.zeros(shape=(n_electrons)) # + 0.5
+    stops  = np.ones(shape=(n_electrons)) * (_n_ticks -1) # + 0.5
     
     # Reshape z positions for broadcasting:
     _z_positions = _z_positions.reshape((-1,1))
     
+
     exp_input = np.linspace(start=starts, stop=stops, num=_n_ticks, axis=-1)
 
     exp_values = np.exp( - (exp_input - _z_positions)**2.  / (2. * _bin_sigma))
