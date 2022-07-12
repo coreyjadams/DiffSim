@@ -1,3 +1,5 @@
+import time
+
 from config import MPI_AVAILABLE
 
 if MPI_AVAILABLE:
@@ -27,8 +29,8 @@ def compute_loss(simulated_waveforms, real_waveforms):
     # by the input data to push the loss up in important places and
     # down in unimportant places.  But, don't want the loss to be zero 
     # where the wavefunction is zero, so put a floor:
-    # loss = difference
-    loss = difference * (real_waveforms + 1e-4)
+    loss = difference
+    # loss = difference * (real_waveforms + 1e-4)
     
     # And, return the loss as a scalar:
     return loss.mean()
@@ -64,8 +66,8 @@ class supervised_trainer:
 
         self.simulate_fn = simulate_fn
 
-        self.key = jax.random.PRNGKey(0)
-        
+        self.key = jax.random.PRNGKey(int(time.time()))
+        self.key, subkey = jax.random.split(self.key)
 
         # Creat a local forward pass function to use to create a grad function:
 
@@ -94,42 +96,33 @@ class supervised_trainer:
 
 
 
-    # def plot_pmts(self, plot_dir, sim_pmts, real_pmts):
+    def plot_pmts(self, plot_dir, sim_pmts, real_pmts):
 
-    #     x_ticks = numpy.arange(550)
-    #     plot_dir.mkdir(parents=True, exist_ok=True)
-    #     for i_pmt in range(12):
-    #         fig = plt.figure(figsize=(16,9))
-    #         plt.plot(x_ticks, sim_pmts[i_pmt], label=f"Generated PMT {i_pmt} signal")
-    #         plt.plot(x_ticks, real_pmts[i_pmt], label=f"Real PMT {i_pmt} signal")
-    #         plt.legend()
-    #         plt.grid(True)
-    #         plt.xlabel("Time Tick [us]")
-    #         plt.ylabel("Amplitude")
-    #         plt.savefig(plot_dir / pathlib.Path(f"pmt_{i_pmt}.png"))
-    #         plt.tight_layout()
-    #         plt.close()
+        # x_ticks = numpy.arange(550)
+        plot_dir.mkdir(parents=True, exist_ok=True)
+        for i_pmt in range(12):
 
-    #     return
+            # Find the peak of this PMT and only plot the nearby data:
+            peak_tick = real_pmts[i_pmt].argmax()
 
-    # # def plot_waveform_nicely(input_waveforms, input_labels):
+            start = max(peak_tick - 50, 0)
+            end = min(peak_tick + 50, 550)
 
-    # #     x_ticks = numpy.arange(input_waveforms[0].shape[0])
+            x_ticks = numpy.arange(start, end)
 
-    # #     # Ratio
+            fig = plt.figure(figsize=(16,9))
+            plt.plot(x_ticks, sim_pmts[i_pmt][start:end], label=f"Generated PMT {i_pmt} signal")
+            plt.plot(x_ticks, real_pmts[i_pmt][start:end], label=f"Real PMT {i_pmt} signal")
+            plt.legend()
+            plt.grid(True)
+            plt.xlabel("Time Tick [us]")
+            plt.ylabel("Amplitude")
+            plt.savefig(plot_dir / pathlib.Path(f"pmt_{i_pmt}.png"))
+            plt.tight_layout()
+            plt.close()
 
+        return
 
-
-    # #     fig = plt.figure(figsize=(16,9))
-    # #     plt.plot(x_ticks, sim_pmts[i_pmt], label=f"Generated PMT {i_pmt} signal")
-    # #     plt.plot(x_ticks, real_pmts[i_pmt], label=f"Real PMT {i_pmt} signal")
-    # #     plt.legend()
-    # #     plt.grid(True)
-    # #     plt.xlabel("Time Tick [us]")
-    # #     plt.ylabel("Amplitude")
-    # #     plt.savefig(plot_dir / pathlib.Path(f"pmt_{i_pmt}.png"))
-    # #     plt.tight_layout()
-    # #     plt.close()
 
     # def plot_sipms(self, plot_dir, sim_sipms, real_sipms):
 
@@ -214,107 +207,55 @@ class supervised_trainer:
     #     plt.savefig(plot_dir / pathlib.Path(f"real_sipm_compress_{label}.png"))
     #     plt.close()
 
-    # def comparison_plots(self, simulator, plot_directory):
+    def comparison_plots(self, plot_directory):
 
 
 
-    #     # In this function, we take the monitoring data, run an inference step,
-    #     # And make plots of real vs sim responses.
-
-    #     # First, run the monitor data through the simulator:
-    #     gen_s2_pmt, gen_s2_si = simulator(self.monitor_data['energy_deposits'])
-
-    #     # Save the raw data into a file:
-    #     print(plot_directory)
-    #     plot_directory.mkdir(parents=True, exist_ok=True)
-    #     numpy.savez_compressed(plot_directory / pathlib.Path(f"output_arrays.npz"),
-    #         real_pmts  = self.monitor_data["S2Pmt"],
-    #         gen_pmts   = gen_s2_pmt,
-    #         real_sipms = self.monitor_data["S2Si"],
-    #         gen_sipms  = gen_s2_si,
-
-    #         )
+        # In this function, we take the monitoring data, run an inference step,
+        # And make plots of real vs sim responses.
 
 
-    #     # # Now, instead of computing loss, we generate plots:
+        parameters = self.get_params(self.opt_state)
+
+        self.key, subkey = jax.random.split(self.key)
+        # First, run the monitor data through the simulator:
+        simulated_pmts = self.simulate_fn(self.monitor_data['energy_deposits'], parameters, subkey)
+
+        # Save the raw data into a file:
+        print(plot_directory)
+        plot_directory.mkdir(parents=True, exist_ok=True)
+        # numpy.savez_compressed(plot_directory / pathlib.Path(f"output_arrays.npz"),
+        #     real_pmts  = self.monitor_data["S2Pmt"],
+        #     gen_pmts   = simulated_pmts,
+        #     real_sipms = self.monitor_data["S2Si"],
+        #     # gen_sipms  = gen_s2_si,
+
+        #     )
 
 
-
-    #     batch_index=0
-
-    #     pmt_dir = plot_directory / pathlib.Path(f"pmts/")
-    #     self.plot_pmts(pmt_dir, gen_s2_pmt[batch_index], self.monitor_data["S2Pmt"][batch_index])
-
-    #     sim_data_3d  = gen_s2_si[batch_index]
-    #     real_data_3d = self.monitor_data["S2Si"][batch_index]
+        # # Now, instead of computing loss, we generate plots:
 
 
-    #     sipm_dir = plot_directory / pathlib.Path(f"sipms/")
-    #     self.plot_sipms(sipm_dir, sim_data_3d, real_data_3d)
+        batch_index=2
+
+        pmt_dir = plot_directory / pathlib.Path(f"pmts/")
+        self.plot_pmts(pmt_dir, simulated_pmts[batch_index], self.monitor_data["S2Pmt"][batch_index])
+
+        # sim_data_3d  = gen_s2_si[batch_index]
+        # real_data_3d = self.monitor_data["S2Si"][batch_index]
 
 
-    #     # Take 2D compression views:
-    #     self.plot_compressed_sipms(sipm_dir, sim_data_3d, real_data_3d, axis=0)
-    #     self.plot_compressed_sipms(sipm_dir, sim_data_3d, real_data_3d, axis=1)
-    #     self.plot_compressed_sipms(sipm_dir, sim_data_3d, real_data_3d, axis=2)
+        # sipm_dir = plot_directory / pathlib.Path(f"sipms/")
+        # self.plot_sipms(sipm_dir, sim_data_3d, real_data_3d)
 
 
-
-
-
-    # def build_optimizer(self):
-    #     from config.mode import OptimizerKind
-
-    #     lr = self.config.learning_rate
-
-    #     if self.config.optimizer == OptimizerKind.Adam:
-    #         return tf.keras.optimizers.Adam(lr)
-    #     elif self.config.optimizer == OptimizerKind.SGD:
-    #         return tf.keras.optimizers.SGD(lr)
-    #     else:
-    #         raise Exception("Unhandled Optimizer")
-
-    # def build_loss_function(self):
-    #     from config.mode import Loss
-
-    #     if self.config.loss == Loss.MSE:
-    #         return tf.keras.losses.MeanSquaredError()
-    #     else:
-    #         raise Exception("Unhandled Loss Kind")
-
-    # def sipm_loss(self, real_sipms, sim_sipms):
-
-    #     # This loss function is similar to mean absolute error,
-    #     # Except it does not count any location where both input and 
-    #     # output are not zero:
-        
-    #     diff = real_sipms - sim_sipms
-            
-    #     loss = diff**2
-
-    #     max_loc = 30
-    #     print("real_sipms: ", real_sipms[0,0,max_loc-5 : max_loc + 5])
-    #     print("sim_sipms: ", sim_sipms[0,0,max_loc-5 : max_loc + 5])
-    #     print("loss: ", loss[0,0,max_loc-5 : max_loc + 5])
-
-
-    #     return tf.pow(self.loss_func(real_sipms, sim_sipms), 3)
-
-    #     non_zero_input = real_sipms != 0
-    #     non_zero_gen   = sim_sipms  != 0
-
-    #     zero = tf.constant(0, dtype=tf.float32)
-    #     where_input = tf.not_equal(real_sipms, zero)
-
-    #     joint_locations = tf.math.logical_and(non_zero_input, non_zero_gen)
+        # # Take 2D compression views:
+        # self.plot_compressed_sipms(sipm_dir, sim_data_3d, real_data_3d, axis=0)
+        # self.plot_compressed_sipms(sipm_dir, sim_data_3d, real_data_3d, axis=1)
+        # self.plot_compressed_sipms(sipm_dir, sim_data_3d, real_data_3d, axis=2)
 
 
 
-    #     # Select the locations from both tensors:
-    #     selected_input = tf.boolean_mask(real_sipms, joint_locations)
-    #     selected_gen   = tf.boolean_mask(sim_sipms, joint_locations)
-
-    #     return self.loss_func(selected_input, selected_gen)
 
     def train_iteration(self, batch, i):
 
@@ -337,8 +278,11 @@ class supervised_trainer:
 
 
         logger.info(waveforms.max())
+        logger.info(parameters["lifetime"])
         logger.info(parameters["diffusion"])
         logger.info(parameters["pmt_dynamic_range"])
+        logger.info(parameters["waveform_sigma"])
+
 
         # self.parameters = apply_gradients(self.parameters, gradients, learning_rate=0.01)
 
