@@ -138,7 +138,7 @@ class exec(object):
                 OmegaConf.save(config=self.config, f=cfg)
 
     # def build_hp(self, _writer):
-        
+
     #     # Import the hparams api:
     #     from tensorboard.plugins.hparams import api as hp
 
@@ -178,14 +178,14 @@ class exec(object):
             stream_handler = logging.StreamHandler(sys.stdout)
             formatter = logging.Formatter('%(asctime)s ----- %(levelname)s - %(message)s')
             stream_handler.setFormatter(formatter)
-            handler = handlers.MemoryHandler(capacity = 0, target=stream_handler)
+            handler = handlers.MemoryHandler(capacity = 25, target=stream_handler)
             logger.addHandler(handler)
 
             # Add a file handler too:
             log_file = self.config.save_path + "/process.log"
             file_handler = logging.FileHandler(log_file)
             file_handler.setFormatter(formatter)
-            file_handler = handlers.MemoryHandler(capacity=10, target=file_handler)
+            file_handler = handlers.MemoryHandler(capacity=25, target=file_handler)
             logger.addHandler(file_handler)
 
             logger.setLevel(logging.INFO)
@@ -280,7 +280,7 @@ class exec(object):
         # physical_devices = tf.config.list_physical_devices('GPU')
         # for device in physical_devices:
             # tf.config.experimental.set_memory_growth(device, True)
-        return 
+        return
 
     def train(self):
 
@@ -322,7 +322,7 @@ class exec(object):
         best_energy = 999
 
         dl_iterable = self.dataloader.iterate()
-        
+
         logger.warning("NEED TO MOVE BATCH LOADING BACK INTO THE LOOP!")
         batch = next(dl_iterable)
 

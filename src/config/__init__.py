@@ -6,6 +6,6 @@ NAME = ""
 try:
     from mpi4py import MPI # this does MPI init
 
-    MPI_AVAILABLE=True
+    MPI_AVAILABLE=False
 except BaseException as e:
     MPI_AVAILABLE=False
