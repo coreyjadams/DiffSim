@@ -21,6 +21,7 @@ from hydra.core.config_store import ConfigStore
 
 hydra.output_subdir = None
 
+os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
@@ -28,8 +29,11 @@ from jax import random
 import jax.numpy as numpy
 import jax.tree_util as tree_util
 
+# from jax.config import config
+# config.update('jax_disable_jit', True)
 
 
+from tensorboardX import SummaryWriter
 
 
 # Add the local folder to the import path:
@@ -40,8 +44,8 @@ sys.path.insert(0,src_dir)
 from config import Config
 from config import MPI_AVAILABLE, NAME
 
-if MPI_AVAILABLE:
-    import horovod.tensorflow as hvd
+# if MPI_AVAILABLE:
+#     import horovod.tensorflow as hvd
 
 
 
@@ -122,9 +126,9 @@ class exec(object):
 
 
         # TODO: network snapshots
-        # if not MPI_AVAILABLE or hvd.rank() == 0:
-        #     # self.writer = tf.summary.create_file_writer(self.save_path)
-        #     self.writer = tf.summary.create_file_writer(self.save_path + "/log/")
+        if not MPI_AVAILABLE or hvd.rank() == 0:
+            # self.writer = tf.summary.create_file_writer(self.save_path)
+            self.writer = SummaryWriter(self.save_path + "/log/")
 
         # self.build_hp(self.writer)
 
@@ -163,12 +167,10 @@ class exec(object):
     #       )
     #     hp.hparams(hparams)  # record the values used in this trial
     #     accuracy = train_test_model(hparams)
-    #     tf.summary.scalar(METRIC_ACCURACY, accuracy, step=1)
+    #     tf.summary.scalar(METRIC_ACCURACY, accuracy, 1)
 
 
     def configure_logger(self):
-
-        print("Configuring logger")
 
         logger = logging.getLogger(NAME)
 
@@ -213,10 +215,10 @@ class exec(object):
         return dl
 
     def build_simulator(self, batch, subkey):
-        from simulator.NEW_Simulator import simulate_pmts, init_params
+        from simulator.NEW_Simulator import simulate_waveforms, init_params
 
         # return the function but return initialized params:
-        return simulate_pmts, init_params(subkey, batch)
+        return simulate_waveforms, init_params(subkey, batch)
 
     def build_trainer(self, batch, fn, params):
 
@@ -349,7 +351,7 @@ class exec(object):
             # metrics.update(simulator_metrics)
 
 
-            # self.summary(metrics, self.global_step)
+            self.summary(metrics, self.global_step)
 
             # Add comparison plots every iteration for now:
             if self.global_step % self.config.run.image_iteration == 0:
@@ -357,13 +359,11 @@ class exec(object):
                     save_dir = self.save_path / pathlib.Path(f'comp/{self.global_step}/')
                     self.trainer.comparison_plots(save_dir)
 
-            # # Add the gradients and model weights to the summary every 25 iterations:
-            # if self.global_step % 25 == 0:
-            #     if not MPI_AVAILABLE or hvd.rank() == 0:
-            #         weights = self.sr_worker.wavefunction.trainable_variables
-            #         gradients = self.sr_worker.latest_gradients
-            #         self.model_summary(weights, gradients, self.global_step)
-            #         self.wavefunction_summary(self.sr_worker.latest_psi, self.global_step)
+            # Add the weights to the summary every 100 iterations:
+            if self.global_step % 100 == 0:
+                if not MPI_AVAILABLE or hvd.rank() == 0:
+                    parameters = self.trainer.parameters()
+                    self.model_summary(parameters, self.global_step)
 
 
             if self.global_step % 1 == 0:
@@ -438,23 +438,22 @@ class exec(object):
             self.global_step += 1
 
 
-    def model_summary(self, weights, gradients, step):
-        with self.writer.as_default():
-            for w, g in zip(weights, gradients):
-                tf.summary.histogram("weights/"   + w.name, w, step=step)
-                tf.summary.histogram("gradients/" + w.name, g, step=step)
+    def model_summary(self, weights, step):
+        # with self.writer.as_default():
+        for key in weights:
+            self.writer.add_histogram("weights/" + key, weights[key], step)
 
     def wavefunction_summary(self, latest_psi, step):
-        with self.writer.as_default():
-            tf.summary.histogram("psi", latest_psi, step=step)
+        # with self.writer.as_default():
+        self.writer.add_histogram("psi", latest_psi, step)
 
 
     # @tf.function
     def summary(self, metrics, step):
         if not MPI_AVAILABLE or hvd.rank() == 0:
-            with self.writer.as_default():
-                for key in metrics:
-                    tf.summary.scalar(key, metrics[key], step=step)
+            # with self.writer.as_default():
+            for key in metrics:
+                self.writer.add_scalar(key, metrics[key], step)
 
 
     def save_weights(self):
