@@ -29,8 +29,8 @@ def compute_loss(simulated_waveforms, real_waveforms):
     # by the input data to push the loss up in important places and
     # down in unimportant places.  But, don't want the loss to be zero
     # where the wavefunction is zero, so put a floor:
-    loss = difference
-    # loss = difference * (real_waveforms + 1e-4)
+    # loss = difference
+    loss = difference * (real_waveforms + 1e-4)
 
     # And, return the loss as a scalar:
     return loss.mean()
@@ -88,7 +88,7 @@ class supervised_trainer:
 
 
 
-        opt_init, opt_update, get_params = jax_opt.adam(1e-2)
+        opt_init, opt_update, get_params = jax_opt.adam(1e-3)
 
         # Initialize the optimizer:
         self.opt_state = opt_init(parameters)
@@ -218,6 +218,10 @@ class supervised_trainer:
         parameters["diffusion/y"] = p["diffusion"][1]
         parameters["diffusion/z"] = p["diffusion"][2]
         parameters["lifetime"] = p["lifetime"]
+        parameters["el_spread"] = p["el_spread"]
+        parameters["sipm_scale_mean"] = p["sipm_dynamic_range"].mean()
+        parameters["sipm_scale_std"] = p["sipm_dynamic_range"].std()
+        parameters["el_amplification"] = p["el_amplification"]
         return parameters
 
     def comparison_plots(self, plot_directory):
@@ -248,7 +252,7 @@ class supervised_trainer:
         # # Now, instead of computing loss, we generate plots:
 
 
-        batch_index=2
+        batch_index=0
 
         pmt_dir = plot_directory / pathlib.Path(f"pmts/")
         self.plot_pmts(pmt_dir, simulated_pmts[batch_index], self.monitor_data["S2Pmt"][batch_index])
@@ -316,7 +320,7 @@ class supervised_trainer:
 
         metrics['loss/loss'] = loss
 
-
+        metrics.update(self.parameters())
         # if MPI_AVAILABLE:
         #     tape = hvd.DistributedGradientTape(tape)
 

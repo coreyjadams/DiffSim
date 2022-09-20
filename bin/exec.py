@@ -324,11 +324,12 @@ class exec(object):
         best_energy = 999
 
         dl_iterable = self.dataloader.iterate()
+        print("MOVE DATA LOADING BACK")
+        batch = next(dl_iterable)
 
         while self.global_step < self.config.run.iterations:
 
             if not self.active: break
-            batch = next(dl_iterable)
 
             if self.profile:
                 if not MPI_AVAILABLE or hvd.rank() == 0:
@@ -363,7 +364,7 @@ class exec(object):
             if self.global_step % 100 == 0:
                 if not MPI_AVAILABLE or hvd.rank() == 0:
                     parameters = self.trainer.parameters()
-                    self.model_summary(parameters, self.global_step)
+                    # self.model_summary(parameters, self.global_step)
 
 
             if self.global_step % 1 == 0:

@@ -53,28 +53,28 @@ def simulate_waveforms(energy_depositions, parameters, key):
 
     # print("pmt_waveforms.shape: ", pmt_waveforms.shape )
 
-    # Compute the response of the EL region for the SIPMs.
-    # It's an isotropic emission, assumed, so that means
-    # It should fall off as 1/r^2 for each SIPM.
 
+    # The sipm respone network outputs a value between 0 and 1 for each xy location
+    # It is multiplied by an overall scale factor.
     # Square it to ensure positive:
-    sipm_response = batch_sipm_nn_apply(parameters["sipm_network"], diffused_xy)**2
+    sipm_response = (parameters["el_amplification"])**2 * \
+        (batch_sipm_nn_apply(parameters["sipm_network"], diffused_xy) + 0.5)
 
-
-    # print("sipm_response.shape: ", sipm_response.shape )
+    # This function takes the sipm light production and maps it onto waveforms.
+    # So the weights are applied here, too.
+    # The parameter el_spread indicates how far in xy each electron's light
+    # spreads, modeled as a gaussian.  The output is not yet summed over electrons.
     sipm_waveforms = batch_build_sipm_waveforms(
-        sipm_response, diffused_xy, diffused_z, lifetime, 0.1)
+        sipm_response, diffused_xy, diffused_z, lifetime, 0.1, parameters["el_spread"])
+    # Sum over all electrons
     sipm_waveforms = sipm_waveforms.sum(axis=1)
 
-
-    # TODO: RIght here!!!
-    # Need to reshape the sipm response
-    # print("sipm_waveforms.shape: ", sipm_waveforms.shape )
 
     init_shape = sipm_waveforms.shape
     # TODO: RIght here!!!
     # sipm_waveforms = sipm_waveforms.reshape([init_shape[0], 47,47, init_shape[-1]])
-    # sipm_waveforms = sipm_waveforms * parameters["sipm_dynamic_range"]
+    # This parameter accounts for sipm-to-sipm variations
+    # sipm_waveforms = sipm_waveforms * (parameters["sipm_dynamic_range"]**2)
     # print("sipm_waveforms.shape: ", sipm_waveforms.shape )
 
 
@@ -99,11 +99,13 @@ def init_params(key, example_input):
 
 
     parameters = {
-        "diffusion"   : 0.1*np.ones(3),
+        "diffusion"   : np.asarray([0.1,0.1,0.1]),
         "lifetime"    : 5000*np.ones(1),
         "pmt_network" : pmt_network_params,
         "sipm_network" : sipm_network_params,
+        "el_spread" : 0.1*np.ones(1),
         "pmt_dynamic_range" : np.ones(12),
+        "el_amplification" : 10*np.ones(1),
         "sipm_dynamic_range" : np.ones([1,47,47,1]),
         "waveform_sigma" : np.asarray(0.1)
     }
@@ -212,7 +214,7 @@ sipm_nn_init, sipm_nn_apply = stax.serial(
     stax.Dense(28), stax.Tanh,
     stax.Dense(128), stax.Tanh,
     #stax.Dense(512), stax.Tanh,
-    stax.Dense(1),
+    stax.Dense(1), stax.Sigmoid
 )
 event_sipm_nn_apply = jit(vmap(jit(sipm_nn_apply), in_axes=[None, 0]))
 batch_sipm_nn_apply = jit(vmap(event_sipm_nn_apply, in_axes=[None, 0]))
@@ -258,7 +260,7 @@ batch_build_pmt_waveforms = jit(vmap(e_build_pmt_waveforms, in_axes=[0,0,0,None,
 
 # Functions to build waveforms based on weights and responses:
 @jit
-def build_sipm_waveforms(_sensor_response, _xy_positions, _z_positions, _weights, _bin_sigma):
+def build_sipm_waveforms(_sensor_response, _xy_positions, _z_positions, _weights, _bin_sigma, el_spread):
     '''
     Compute the PMT response to electrons on the EL region
     '''
@@ -281,13 +283,24 @@ def build_sipm_waveforms(_sensor_response, _xy_positions, _z_positions, _weights
     _xy_reshaped = _xy_positions.reshape((_xy_positions.shape[0], 1,1,_xy_positions.shape[-1]))
     subtracted_values = _xy_reshaped - sipm_locations
 
-    r_squared = subtracted_values**2
-    r_squared = 1./(r_squared.sum(axis=-1) + 1.0) # This extra addition is the "standoff distance"
+    r_squared = (subtracted_values**2).sum(-1)
+    # print("r_squared.shape: ", r_squared.shape)
+
+    sipm_spread_response = np.exp(-0.5*(r_squared/el_spread) **2) / (el_spread * 2.5066)
+
+    # print("sipm_spread_response.shape: ", sipm_spread_response.shape)
+
+    _sensor_response = sipm_spread_response * _sensor_response.reshape((-1,1,1))
+
+    # Run the subtracted values through a gaussian response:
+
+    # r_squared = subtracted_values**2
+    # r_squared = 1./(r_squared.sum(axis=-1) + 1.0) # This extra addition is the "standoff distance"
     # print("r_squared.shape: ", r_squared.shape)
     # print("_sensor_response.shape: ", _sensor_response.shape)
 
     # Multiple the total light (sensor response) by the 1/r^2 scaling:
-    _sensor_response = _sensor_response.reshape((-1,1,1)) * r_squared
+    # _sensor_response = _sensor_response.reshape((-1,1,1)) * r_squared
 
     # We put the subtracted differences through a 1/r^2 response
 
@@ -315,5 +328,5 @@ def build_sipm_waveforms(_sensor_response, _xy_positions, _z_positions, _weights
     return waveforms.transpose((1,2,0))
 
 
-e_build_sipm_waveforms = jit(vmap(build_sipm_waveforms, in_axes=[0,0,0,0,None,]))
-batch_build_sipm_waveforms = jit(vmap(e_build_sipm_waveforms, in_axes=[0,0,0,0,None,]))
+e_build_sipm_waveforms = jit(vmap(build_sipm_waveforms, in_axes=[0,0,0,0,None, None,]))
+batch_build_sipm_waveforms = jit(vmap(e_build_sipm_waveforms, in_axes=[0,0,0,0,None, None]))
