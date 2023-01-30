@@ -27,10 +27,11 @@ logger = logging.getLogger()
 class krypton:
 
     def __init__(self, path, run,
-        batch_size=32, max_energy_depositions=2, db = None):
+        batch_size=32, 
+        max_energy_depositions=2, db = None):
 
         self.batch_size = batch_size
-        self.path = path
+        self.path = pathlib.Path(path)
         self.run  = run
 
         self.n_pmts         = 12
@@ -161,19 +162,19 @@ class krypton:
 
 
 
+        kdst_path = self.path / "kdst"  / "trigger1"
+        pmap_path = self.path / "pmaps" / "trigger1"
 
-        kdst_path = self.path / pathlib.Path(f"{self.run}/kdst/")
-        pmap_path = self.path / pathlib.Path(f"{self.run}/pmaps/")
 
-        pmap_format = "pmaps_{:04}_8678_trigger1_v1.2.0_20191122_krbg1600.h5"
-        kdst_format = "kdst_{:04}_8678_trigger1_v1.2.0_20191122_krbg.h5"
+        pmap_format = "pmaps_{index:04}_{run}_trigger1_v1.2.0_20191122_krbg1600.h5"
+        kdst_format = "kdst_{index:04}_{run}_trigger1_v1.2.0_20191122_krbg.h5"
 
         # How many total files?
         # Don't glob from everywhere if at scale:
         if not MPI_AVAILABLE or hvd.rank() == 0:
             n_files = len(glob.glob(str(kdst_path / pathlib.Path("*.h5"))))
             if n_files == 0:
-                raise Exception("No files found!")
+                raise Exception(f"No files found at {kdst_path}!")
         else:
             n_files = 0
 
@@ -214,9 +215,10 @@ class krypton:
             for file_index in local_indexes:
                 if not self.active: break
 
-                kdst = kdst_path / pathlib.Path(kdst_format.format(file_index))
-                pmap = pmap_path / pathlib.Path(pmap_format.format(file_index))
-
+                kdst = kdst_path / pathlib.Path(kdst_format.format(
+                    index=file_index, run=self.run))
+                pmap = pmap_path / pathlib.Path(pmap_format.format(
+                    index=file_index, run=self.run))
 
                 if not kdst.is_file(): continue
                 if not pmap.is_file(): continue

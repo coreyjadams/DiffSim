@@ -10,7 +10,7 @@ import jax.numpy as numpy
 import jax.tree_util as tree_util
 from jax import jit
 
-from jax.experimental import optimizers as jax_opt
+from jax.example_libraries import optimizers as jax_opt
 
 import logging
 from logging import handlers
@@ -24,7 +24,7 @@ from matplotlib import pyplot as plt
 @jit
 def compute_loss(simulated_waveforms, real_waveforms):
     # First, we compute the difference squared in the two:
-    difference = (simulated_waveforms - real_waveforms)**2.
+    difference = (simulated_waveforms - real_waveforms)**2
     # Because this data is so sparse, we multiply the squared difference
     # by the input data to push the loss up in important places and
     # down in unimportant places.  But, don't want the loss to be zero
@@ -89,6 +89,8 @@ class supervised_trainer:
 
 
         opt_init, opt_update, get_params = jax_opt.adam(1e-3)
+        # opt_init, opt_update, get_params = jax_opt.rmsprop(1e-3)
+        # opt_init, opt_update, get_params = jax_opt.sgd(1e-3)
 
         # Initialize the optimizer:
         self.opt_state = opt_init(parameters)
@@ -134,8 +136,6 @@ class supervised_trainer:
         x_ticks = numpy.arange(550)
         plot_dir.mkdir(parents=True, exist_ok=True)
 
-        print(real_sipms.shape)
-
 
         # Find the index of the peak sipm location:
         max_value = numpy.max(real_sipms)
@@ -146,6 +146,9 @@ class supervised_trainer:
             if i_x < 0 or i_x >= 47: continue
             for i_y in [max_y -1, max_y, max_y + 1]:
                 if i_y < 0 or i_y >= 47: continue
+
+                print(sim_sipms[i_x][i_y][max_z-5:max_z+5])
+                print(real_sipms[i_x][i_y][max_z-5:max_z+5])
 
                 fig = plt.figure(figsize=(16,9))
                 plt.plot(x_ticks, sim_sipms[i_x][i_y], label=f"Generated SiPM [{i_x}, {i_y}] signal")
@@ -219,9 +222,9 @@ class supervised_trainer:
         parameters["diffusion/z"] = p["diffusion"][2]
         parameters["lifetime"] = p["lifetime"]
         parameters["el_spread"] = p["el_spread"]
-        parameters["sipm_scale_mean"] = p["sipm_dynamic_range"].mean()
-        parameters["sipm_scale_std"] = p["sipm_dynamic_range"].std()
-        parameters["el_amplification"] = p["el_amplification"]
+        # parameters["sipm_scale_mean"] = p["sipm_dynamic_range"].mean()
+        # parameters["sipm_scale_std"] = p["sipm_dynamic_range"].std()
+        # parameters["el_amplification"] = p["el_amplification"]
         return parameters
 
     def comparison_plots(self, plot_directory):
@@ -273,11 +276,11 @@ class supervised_trainer:
 
 
 
-    def train_iteration(self, batch, i):
+    def train_iteration(self, batch, i, parameters):
 
         metrics = {}
 
-        parameters = self.get_params(self.opt_state)
+        # parameters = self.get_params(self.opt_state)
 
         self.key, subkey = jax.random.split(self.key)
 
@@ -285,8 +288,12 @@ class supervised_trainer:
         # (loss, (loss_pmts, loss_sipms), (pmts, sipms) ), gradients = self.gradient_fn(batch, parameters, subkey)
         loss, gradients = self.gradient_fn(batch, parameters, subkey)
 
-        self.opt_state = self.opt_update(i, gradients, self.opt_state)
+        parameters = jax.tree_util.tree_map(
+            lambda x, y: x - 1e-5*y, parameters, gradients)
 
+
+        # print(parameters["el_spread"], gradients["el_spread"])
+        # self.opt_state = self.opt_update(i, gradients, self.opt_state)
 
 
         # self.parameters = apply_gradients(self.parameters, gradients, learning_rate=0.01)
@@ -329,4 +336,4 @@ class supervised_trainer:
 
         # self.optimizer.apply_gradients(zip(grads, simulator.trainable_variables))
 
-        return metrics
+        return parameters, metrics

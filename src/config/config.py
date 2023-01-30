@@ -27,7 +27,7 @@ class Run:
     distributed:        bool        = True
     compute_mode:       ComputeMode = ComputeMode.GPU
     iterations:         int         = 500
-    minibatch_size:     int         = 256
+    minibatch_size:     int         = 32
     id:                 str         = MISSING
     precision:          Precision   = Precision.float32
     profile:            bool        = False

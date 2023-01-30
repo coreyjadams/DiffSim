@@ -7,27 +7,36 @@ from jax.example_libraries import stax
 import jax.tree_util as tree_util # for applying learning rate to gradients
 
 # This is a global variable defining the sipm locations:
-sipms_1D = np.arange(-235, 235, 10.)
+sipms_1D = np.arange(-235, 235, 10.) + 5
 n_sipms = sipms_1D.shape[0]
 sipm_locations_x = np.tile(sipms_1D, (n_sipms,)).reshape((n_sipms, n_sipms))
 sipm_locations_y = np.tile(sipms_1D, (n_sipms,)).reshape((n_sipms, n_sipms)).transpose()
 
 sipm_locations = np.stack([sipm_locations_y, sipm_locations_x], -1)
-
+print(sipm_locations)
 # JAX Is pure functional programming.  So, we're gonna build up to one function here:
 
 
 # Build the whole thing as a function we can JIT:
 # @jit
 def simulate_waveforms(energy_depositions, parameters, key):
+
+    # Energy depositions comes in with shape [batch, max_deps_per_event, 4]
+    # where 4 represenets (x,y,z,E)
+
     # Split the key for generation:
     key, subkey = random.split(key)
     generated_electrons, valid_electrons = \
         generate_electrons_batch(energy_depositions, subkey)
+
+    # The generated electrons are per energy deposition, so it has shape
+    # [batch, max_deps_per_event, max_electrons_per_dep, 3], 3 for x/y/z
     # Split the key for diffusion
     key, subkey = random.split(key)
     diffused = \
         diffuse_electrons_batch(generated_electrons, parameters['diffusion'], subkey)
+
+    # Here, diffused electrons is of the shape [batch_size, ]
 
 
     lifetime = compute_lifetime(diffused, parameters["lifetime"], valid_electrons)
@@ -57,8 +66,13 @@ def simulate_waveforms(energy_depositions, parameters, key):
     # The sipm respone network outputs a value between 0 and 1 for each xy location
     # It is multiplied by an overall scale factor.
     # Square it to ensure positive:
-    sipm_response = (parameters["el_amplification"])**2 * \
-        (batch_sipm_nn_apply(parameters["sipm_network"], diffused_xy) + 0.5)
+    sipm_response = np.abs(batch_sipm_nn_apply(parameters["sipm_network"], diffused_xy))
+
+    # one_waveform = build_sipm_waveforms(sipm_response[0][0], 
+    #     diffused_xy[0][0], diffused_z[0][0],
+    #     lifetime[0][0],
+    #     0.1,
+    #     parameters["el_spread"])
 
     # This function takes the sipm light production and maps it onto waveforms.
     # So the weights are applied here, too.
@@ -67,7 +81,7 @@ def simulate_waveforms(energy_depositions, parameters, key):
     sipm_waveforms = batch_build_sipm_waveforms(
         sipm_response, diffused_xy, diffused_z, lifetime, 0.1, parameters["el_spread"])
     # Sum over all electrons
-    sipm_waveforms = sipm_waveforms.sum(axis=1)
+    sipm_waveforms =  sipm_waveforms.sum(axis=1)
 
 
     init_shape = sipm_waveforms.shape
@@ -99,15 +113,15 @@ def init_params(key, example_input):
 
 
     parameters = {
-        "diffusion"   : np.asarray([0.1,0.1,0.1]),
-        "lifetime"    : 5000*np.ones(1),
-        "pmt_network" : pmt_network_params,
-        "sipm_network" : sipm_network_params,
-        "el_spread" : 0.1*np.ones(1),
+        "diffusion"     : np.asarray([0.1,0.1,0.1]),
+        "lifetime"      : 5000*np.ones(1),
+        "pmt_network"   : pmt_network_params,
+        "sipm_network"  : sipm_network_params,
+        "el_spread"     : 2*np.ones(1),
         "pmt_dynamic_range" : np.ones(12),
-        "el_amplification" : 10*np.ones(1),
-        "sipm_dynamic_range" : np.ones([1,47,47,1]),
-        "waveform_sigma" : np.asarray(0.1)
+        # "el_amplification" : 12*np.ones(1),
+        # "sipm_dynamic_range" : np.ones([1,47,47,1]),
+        # "waveform_sigma" : np.asarray(0.1)
     }
 
     return parameters
@@ -211,10 +225,11 @@ batch_pmt_nn_apply = jit(vmap(event_pmt_nn_apply, in_axes=[None, 0]))
 
 # Define the SiPM network and it's worker functions:
 sipm_nn_init, sipm_nn_apply = stax.serial(
-    stax.Dense(28), stax.Tanh,
-    stax.Dense(128), stax.Tanh,
+    stax.Dense(28,), stax.Relu,
+    stax.Dense(128), stax.Relu,
     #stax.Dense(512), stax.Tanh,
-    stax.Dense(1), stax.Sigmoid
+    stax.Dense(1), 
+    # stax.Sigmoid
 )
 event_sipm_nn_apply = jit(vmap(jit(sipm_nn_apply), in_axes=[None, 0]))
 batch_sipm_nn_apply = jit(vmap(event_sipm_nn_apply, in_axes=[None, 0]))
@@ -259,13 +274,22 @@ batch_build_pmt_waveforms = jit(vmap(e_build_pmt_waveforms, in_axes=[0,0,0,None,
 
 
 # Functions to build waveforms based on weights and responses:
-@jit
+# @jit
 def build_sipm_waveforms(_sensor_response, _xy_positions, _z_positions, _weights, _bin_sigma, el_spread):
     '''
     Compute the PMT response to electrons on the EL region
     '''
     # This is basically a constant:
     _n_ticks=550
+
+    # print("_sensor_response: ", _sensor_response)
+    # print("_xy_positions: ", _xy_positions)
+    # print("_z_positions: ", _z_positions)
+
+    # print(np.min(_sensor_response))
+    # print(np.max(_sensor_response))
+
+    # exit()
 
     n_electrons = _z_positions.shape[0]
     # Build a range for the exponential input:
@@ -282,11 +306,23 @@ def build_sipm_waveforms(_sensor_response, _xy_positions, _z_positions, _weights
     # print(sipm_locations.shape)
     _xy_reshaped = _xy_positions.reshape((_xy_positions.shape[0], 1,1,_xy_positions.shape[-1]))
     subtracted_values = _xy_reshaped - sipm_locations
+    # print(subtracted_values.shape)
 
     r_squared = (subtracted_values**2).sum(-1)
+    # print(r_squared[0])
     # print("r_squared.shape: ", r_squared.shape)
+    # print(np.min(r_squared[0]))
 
-    sipm_spread_response = np.exp(-0.5*(r_squared/el_spread) **2) / (el_spread * 2.5066)
+    # print(el_spread)
+    # sipm_spread_response = np.exp(-0.5*(r_squared/el_spread)**2)  / (el_spread * 2.5066)
+    sipm_spread_response = 100*np.exp(-0.5*(r_squared/(el_spread)**2) ) / (el_spread * 2.5066)
+    # print(sipm_spread_response[0])
+    # print(np.max(sipm_spread_response[0]))
+    # print(np.argmax(sipm_spread_response[0]))
+    # print(np.sum(sipm_spread_response[0]))
+    # print(np.max(sipm_spread_response[1]))
+    # print(np.argmax(sipm_spread_response[1]))
+    # exit()
 
     # print("sipm_spread_response.shape: ", sipm_spread_response.shape)
 
@@ -328,5 +364,5 @@ def build_sipm_waveforms(_sensor_response, _xy_positions, _z_positions, _weights
     return waveforms.transpose((1,2,0))
 
 
-e_build_sipm_waveforms = jit(vmap(build_sipm_waveforms, in_axes=[0,0,0,0,None, None,]))
-batch_build_sipm_waveforms = jit(vmap(e_build_sipm_waveforms, in_axes=[0,0,0,0,None, None]))
+e_build_sipm_waveforms = vmap(build_sipm_waveforms, in_axes=[0,0,0,0,None, None,])
+batch_build_sipm_waveforms = vmap(e_build_sipm_waveforms, in_axes=[0,0,0,0,None, None])

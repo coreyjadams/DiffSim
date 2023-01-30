@@ -1,11 +1,18 @@
 import tensorflow as tf
 import pandas as pd
 
+
+src_dir = os.path.dirname(os.path.abspath(__file__))
+# src_dir = os.path.dirname(src_dir)
+sys.path.insert(0,src_dir)
+
+
 from matplotlib import pyplot as plt
 
 from utils.dataloader import dataloader
 
 from simulator.NEW_Simulator import NEXT_Simulator
+
 
 
 
@@ -33,7 +40,7 @@ def main(cfg : OmegaConf) -> None:
     # Load the sipm database:
     sipm_db = pd.read_pickle("new_sipm.pkl")
 
-    dl = dataloader(batch_size=BATCH_SIZE, db=sipm_db)
+    dl = dataloader(batch_size=BATCH_SIZE, db=sipm_db, run=cfg.data.run)
 
     global_step = tf.Variable(0, dtype=tf.dtypes.int64)
 

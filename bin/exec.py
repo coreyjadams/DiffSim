@@ -327,6 +327,8 @@ class exec(object):
         print("MOVE DATA LOADING BACK")
         batch = next(dl_iterable)
 
+        model_parameters = self.simulator_params
+
         while self.global_step < self.config.run.iterations:
 
             if not self.active: break
@@ -342,7 +344,9 @@ class exec(object):
 
             metrics["io_time"] = time.time() - start
 
-            train_metrics = self.trainer.train_iteration(batch, self.global_step)
+            model_parameters, train_metrics = self.trainer.train_iteration(batch, self.global_step, model_parameters)
+            # print(model_parameters.keys())
+            # print(model_parameters['diffusion'])
             metrics.update(train_metrics)
 
 
