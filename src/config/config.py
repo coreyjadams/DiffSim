@@ -9,7 +9,8 @@ cs = ConfigStore.instance()
 
 # from .network   import Network
 from .mode      import *
-from .data      import *
+from .data      import Data
+from .physics   import Physics
 
 class ComputeMode(Enum):
     CPU   = 0
@@ -58,9 +59,9 @@ class Config:
     #     ]
     # )
 
-    run: Run = MISSING
-    # data = Krypton()
-    mode: Mode = MISSING
-    data: Any = MISSING
+    physics: Physics = MISSING
+    run:         Run = MISSING
+    mode:       Mode = MISSING
+    data:       Data = MISSING
 
 cs.store(name="base_config", node=Config)
