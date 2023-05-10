@@ -68,12 +68,8 @@ class Lifetime(nn.Module):
 
 
 
-# def init_electron_generator(generator_params):
+def init_lifetime(lifetime_params=None):
 
-#     EG = Lifetime(
-#         p1 = generator_params.p1,
-#         p2 = generator_params.p2,
-#         n_max = generator_params.n_out,
-#     )
+    lifetime = Lifetime()
 
-#     return EG
+    return lifetime, ["lifetime",]

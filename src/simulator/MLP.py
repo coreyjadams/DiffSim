@@ -50,4 +50,4 @@ def init_mlp(mlp_cfg, activation):
         last_activation = mlp_cfg.last_activation
     )
 
-    return mlp
+    return mlp, None

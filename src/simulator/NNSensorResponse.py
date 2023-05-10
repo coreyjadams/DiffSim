@@ -7,20 +7,19 @@ import flax.linen as nn
 
 from functools import partial
 
-from .MLP import MLP
+from .MLP import MLP, init_mlp
 
-class SensorResponse(nn.Module):
+class NNSensorResponse(nn.Module):
     """
-    Class to turn energy depositions, at locations x/y/z/E, into
-    (undiffused) electrons at the same location.
+    Class to take in electrons at some locations and turn them into signals on sensors
 
-    Contains a parameter for the maximum number of electrons to generate.
+    The MLP's final layer should be the number of sensors desired.
 
     """
-
+    active:           bool 
     sensor_simulator: MLP
-    waveform_ticks: int
-    bin_sigma: float
+    waveform_ticks:   int
+    bin_sigma:        float
 
     # Functions to build waveforms based on weights and responses:
     @partial(vmap, in_axes=[None, 0,0,0])
@@ -62,29 +61,35 @@ class SensorResponse(nn.Module):
         return waveforms.transpose()
 
     @nn.compact
-    def __call__(self, diffused_electrons, mask):
+    def __call__(self, simulator_input, z_positions, mask):
 
-        response_of_sensors = self.sensor_simulator(diffused_electrons)
+        if self.active:
+            print(self.sensor_simulator)
+            response_of_sensors = self.sensor_simulator(simulator_input)
 
-        z_positions = diffused_electrons[:,:,2]
 
-        waveforms = self.build_waveforms(response_of_sensors, z_positions, mask)
+            waveforms = self.build_waveforms(response_of_sensors, z_positions, mask)
 
-        return waveforms
+            return waveforms
 
-def init_sensor_response(sensor_cfg):
+def init_nnsensor_response(sensor_cfg):
 
-    mlp = MLP(
-        n_outputs  = [64, 12],
-        bias       = True,
-        activation = nn.relu,
-        last_activation = True
-    )
+    mlp_config = sensor_cfg.mlp_cfg
+    mlp_config.layers.append(sensor_cfg.n_sensors)
+    mlp, _ = init_mlp(mlp_config, nn.relu)
 
-    sr = SensorResponse(
+    # mlp = MLP(
+    #     n_outputs  = [64, 12],
+    #     bias       = True,
+    #     activation = nn.relu,
+    #     last_activation = True
+    # )
+
+    sr = NNSensorResponse(
+        active           = sensor_cfg.active,
         sensor_simulator = mlp, 
-        waveform_ticks = 550,
-        bin_sigma      = 0.1
+        waveform_ticks   = sensor_cfg.waveform_ticks,
+        bin_sigma        = sensor_cfg.bin_sigma
     )
 
-    return sr
+    return sr, None

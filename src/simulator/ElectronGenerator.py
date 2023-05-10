@@ -82,7 +82,8 @@ def init_electron_generator(generator_params):
     EG = ElectronGenerator(
         p1 = generator_params.p1,
         p2 = generator_params.p2,
-        n_max = generator_params.n_out,
+        n_max = generator_params.n_max,
     )
 
-    return EG
+
+    return EG, ["electron",]

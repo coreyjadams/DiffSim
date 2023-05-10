@@ -56,12 +56,9 @@ class Diffusion(nn.Module):
 
 
 
-# def init_electron_generator(generator_params):
+def init_diffusion(diffusion_params=None):
 
-#     EG = Diffusion(
-#         p1 = generator_params.p1,
-#         p2 = generator_params.p2,
-#         n_max = generator_params.n_out,
-#     )
+    # Currently, this doesn't take parameters:
+    diff = Diffusion()
 
-#     return EG
+    return diff, ["diffusion",]

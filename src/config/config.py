@@ -10,7 +10,7 @@ cs = ConfigStore.instance()
 # from .network   import Network
 from .mode      import *
 from .data      import Data
-from .physics   import Physics
+from .physics   import Simulator
 
 class ComputeMode(Enum):
     CPU   = 0
@@ -59,7 +59,7 @@ class Config:
     #     ]
     # )
 
-    physics: Physics = MISSING
+    physics: Simulator = MISSING
     run:         Run = MISSING
     mode:       Mode = MISSING
     data:       Data = MISSING
