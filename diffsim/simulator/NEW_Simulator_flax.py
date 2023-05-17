@@ -10,8 +10,6 @@ from . NNSensorResponse  import NNSensorResponse,  init_nnsensor_response
 from . GSensorResponse   import GSensorResponse,   init_gsensor_response
 
 class NEW_Simulator(nn.Module):
-# @dataclass
-# class NEW_Simulator():
 
     eg:       ElectronGenerator
     diff:     Diffusion
@@ -22,12 +20,9 @@ class NEW_Simulator(nn.Module):
     @nn.compact
     def __call__(self, energies_and_positions):
 
-
         electrons, n_electrons = self.eg(energies_and_positions)
 
         diffused = self.diff(electrons)
-
-        print(n_electrons)
 
         mask = self.lifetime(diffused, n_electrons)
 
@@ -35,13 +30,16 @@ class NEW_Simulator(nn.Module):
         # pmts only depend on xy:
         diffused_xy = diffused[:,:,0:2]
         diffused_z  = diffused[:,:,2]
-        print(diffused_xy.shape)
-        print(diffused_z.shape)
-        pmt_response = self.pmt_s2(diffused_xy, diffused_z, mask)
 
+        pmt_response = self.pmt_s2(diffused_xy, diffused_z, mask)
+        
         sipm_response = self.sipm_s2(diffused_xy, diffused_z, mask)
 
-        return pmt_response, sipm_response
+
+        return {
+        	"pmt_s2"  : pmt_response, 
+        	"sipm_s2" : sipm_response
+    	}
 
 
 

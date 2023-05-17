@@ -44,7 +44,7 @@ class Lifetime(nn.Module):
         """
 
         n_max = diffused_electrons.shape[1]
-        print(n_max)
+
         valid_mask = self.generate_valid_mask(n_max, n_valid)
 
         # We also draw a random number and use it to give each electron
@@ -53,7 +53,7 @@ class Lifetime(nn.Module):
 
         lifetime_v = self.variable(
                 "lifetime", "lifetime",
-                lambda s : 100.0,
+                lambda s : 100.0*numpy.ones(s, dtype=diffused_electrons.dtype),
                 (1,), # shape is scalar
             )
         lifetime = lifetime_v.value

@@ -29,7 +29,6 @@ class NNSensorResponse(nn.Module):
         '''
 
         n_electrons = z_positions.shape[0]
-        print("n_electrons: ", n_electrons)
         # Build a range for the exponential input:
         starts = numpy.zeros(shape=(n_electrons)) # + 0.5
         stops  = numpy.ones(shape=(n_electrons)) * (self.waveform_ticks -1) # + 0.5
@@ -38,37 +37,30 @@ class NNSensorResponse(nn.Module):
         z_positions = z_positions.reshape((-1,1))
 
         exp_input = numpy.linspace(start=starts, stop=stops, num=self.waveform_ticks, axis=-1)
-        print("exp_input.shape: ", exp_input.shape)
 
         exp_values = numpy.exp( - (exp_input - z_positions)**2.  / (2. * self.bin_sigma))
-        print("exp_values.shape: ", exp_values.shape)
 
 
         # Scale by the weights:
         exp_values = exp_values * weights
-        print("exp_values.shape: ", exp_values.shape)
 
         # Normalize the values:
         exp_values = exp_values.transpose() * (0.39894228040/numpy.sqrt(self.bin_sigma))
-        print("weights.shape: ", weights.shape)
 
-        print("exp_values.shape: ", exp_values.shape)
 
-        # print("pmt exp_values.shape: ", exp_values.shape)
-        # print("pmt sensor_response.shape: ", sensor_response.shape)
         waveforms = numpy.matmul(exp_values, sensor_response)
-        print("waveforms.shape: ", waveforms.shape)
         return waveforms.transpose()
 
     @nn.compact
     def __call__(self, simulator_input, z_positions, mask):
 
         if self.active:
-            print(self.sensor_simulator)
+
             response_of_sensors = self.sensor_simulator(simulator_input)
 
-
             waveforms = self.build_waveforms(response_of_sensors, z_positions, mask)
+
+            waveforms =  waveforms.sum(axis=0)
 
             return waveforms
 

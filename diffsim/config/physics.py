@@ -10,11 +10,11 @@ from typing import List
 class ElectronGenerator:
     p1:  float = 22.4
     p2:  float = 0.15
-    n_max: int = 2000   
+    n_max: int = 200   
 
 @dataclass
 class MLPConfig():
-    layers:     List[int] = field(default_factory=lambda: [64, 128, 1])
+    layers:     List[int] = field(default_factory=lambda: [16, 16, 1])
     bias:            bool = True
     last_activation: bool = False
 
@@ -35,7 +35,7 @@ class Simulator:
 @dataclass
 class NNSensorResponse:
     active:        bool = True
-    mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[64, 128]))
+    mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[16, 16]))
     waveform_ticks: int = 550
     bin_sigma:    float = 0.1
     n_sensors:      int = 12
@@ -44,7 +44,7 @@ class NNSensorResponse:
 @dataclass
 class GSensorResponse:
     active:        bool = True
-    mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[64, 128, 1]))
+    mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[16, 16, 1]))
     waveform_ticks: int = 550
     bin_sigma:    float = 0.1
     
@@ -57,4 +57,4 @@ class NEW_Simulator(Simulator):
     sipm_s2: GSensorResponse = field(default_factory = lambda : GSensorResponse())
 
 cs = ConfigStore.instance()
-cs.store(group="physics", name="NEW_Simulator", node=NEW_Simulator)
+cs.store(group="physics", name="NEW", node=NEW_Simulator)

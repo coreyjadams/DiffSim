@@ -6,16 +6,7 @@ import glob
 
 # from multiprocessing import Pool
 
-from config import MPI_AVAILABLE
 
-if MPI_AVAILABLE:
-    import horovod.tensorflow as hvd
-    from mpi4py import MPI
-
-
-import logging
-from logging import handlers
-logger = logging.getLogger()
 
 # For krypton, the detector parameters are supposed to be:
 # drift_velocity         = 1.0 * mm / mus
@@ -26,9 +17,11 @@ logger = logging.getLogger()
 
 class krypton:
 
-    def __init__(self, path, run,
+    def __init__(self, path, run, MPI_AVAILABLE,
         batch_size=32, 
         max_energy_depositions=2, db = None):
+
+        self.MPI_AVAILABLE = MPI_AVAILABLE
 
         self.batch_size = batch_size
         self.path = pathlib.Path(path)
@@ -171,7 +164,7 @@ class krypton:
 
         # How many total files?
         # Don't glob from everywhere if at scale:
-        if not MPI_AVAILABLE or hvd.rank() == 0:
+        if not self.MPI_AVAILABLE or hvd.rank() == 0:
             n_files = len(glob.glob(str(kdst_path / pathlib.Path("*.h5"))))
             if n_files == 0:
                 raise Exception(f"No files found at {kdst_path}!")
@@ -183,7 +176,7 @@ class krypton:
         # intervene here and make sure, if distributed, each rank
         # gets unique files.
 
-        if MPI_AVAILABLE:
+        if self.MPI_AVAILABLE:
 
             n_files = MPI.COMM_WORLD.bcast(n_files, root=0)
 

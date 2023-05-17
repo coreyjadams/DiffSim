@@ -48,7 +48,8 @@ cs.store(
 defaults = [
     {"run" : "base_run"},
     {"mode": "train"},
-    {"data": "krypton"}
+    {"data": "krypton"},
+    {"physics":"NEW"},
 ]
 
 @dataclass
@@ -63,5 +64,6 @@ class Config:
     run:         Run = MISSING
     mode:       Mode = MISSING
     data:       Data = MISSING
+    seed:        int = 0 
 
 cs.store(name="base_config", node=Config)
