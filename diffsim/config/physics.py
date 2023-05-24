@@ -10,7 +10,7 @@ from typing import List
 class ElectronGenerator:
     p1:  float = 22.4
     p2:  float = 0.15
-    n_max: int = 200   
+    n_max: int = 2000
 
 @dataclass
 class MLPConfig():
@@ -30,12 +30,12 @@ class MLPConfig():
 @dataclass
 class Simulator:
     detector: str = ""
-    electron_generator: ElectronGenerator = ElectronGenerator() 
+    electron_generator: ElectronGenerator = field(default_factory=lambda :ElectronGenerator() )
 
 @dataclass
 class NNSensorResponse:
     active:        bool = True
-    mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[16, 16]))
+    mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[16,16,16,16]))
     waveform_ticks: int = 550
     bin_sigma:    float = 0.1
     n_sensors:      int = 12
@@ -44,7 +44,7 @@ class NNSensorResponse:
 @dataclass
 class GSensorResponse:
     active:        bool = True
-    mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[16, 16, 1]))
+    mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[32, 32, 1]))
     waveform_ticks: int = 550
     bin_sigma:    float = 0.1
     

@@ -1,7 +1,7 @@
 import jax.numpy as numpy
 import jax.random as random
 
-from jax import tree_util
+from jax import tree_util, vmap
 from functools import reduce
 
 
@@ -25,7 +25,15 @@ def update_rng_keys(key, key_list):
 
     return new_key_tree
 
-def batch_update_rng_keys(key_list, batch_size):
+def batch_update_rng_keys(key_list):
+
+    f = lambda x : vmap(random.split, in_axes=(0,None))(x, 1).reshape((-1,2))
+
+    keys = tree_util.tree_map(f, key_list)
+
+    return keys
+
+def batch_init_rng_keys(key_list, batch_size):
 
     split_keys = tree_util.tree_map(
         lambda x : random.split(x, batch_size),
@@ -77,7 +85,7 @@ def init_simulator(init_key, config, example_data):
     sim_func   = jit(flax.linen.apply(type(simulator).__call__, simulator))
 
     batch_size = config.run.minibatch_size
-    multi_rngs = batch_update_rng_keys(rng_keys, batch_size)
+    multi_rngs = batch_init_rng_keys(rng_keys, batch_size)
 
     sim_func = jit(vmap(sim_func, in_axes=(None, 0,)))
     test_output = sim_func(sim_params, example_data['energy_deposits'], rngs=multi_rngs)

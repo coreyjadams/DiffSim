@@ -46,14 +46,14 @@ class GSensorResponse(nn.Module):
 
         el_spread_v = self.variable(
                 "el_spread", "el_spread",
-                lambda s : 0.1*numpy.ones(s, dtype=sensor_response.dtype),
+                lambda s : 5.*numpy.ones(s, dtype=sensor_response.dtype),
                 (1,),
             )
         # This actually fetches the value:
         el_spread = el_spread_v.value
 
         # Run the subtracted values through a gaussian response:
-        sipm_spread_response = 100*numpy.exp(-0.5*(r_squared/(el_spread)**2) ) / (el_spread * 2.5066)
+        sipm_spread_response = numpy.exp(-0.5*(r_squared/(el_spread)**2) ) / (el_spread * 2.5066)
  
 
         sensor_response = sipm_spread_response * sensor_response.reshape((-1,1,1))
@@ -91,19 +91,35 @@ class GSensorResponse(nn.Module):
     def __call__(self, simulator_input, z_positions, mask):
 
         if self.active:
+            # The sensor simulator represents the total amount of light emitted
+            # at this particular point on the EL region.
             response_of_sensors = self.sensor_simulator(simulator_input)
-
+            # The exp forces it to be positive and gives a broad dynamic range:
+            response_of_sensors = numpy.exp(response_of_sensors)
+            
             waveforms = self.build_waveforms(
                 response_of_sensors, simulator_input, z_positions, mask)
 
-            return waveforms.sum(axis=0)
+            waveforms = waveforms.sum(axis=0)
+
+            # The waveforms are scaled overall by a parameter _per sensor_:
+            sensor_shape = self.sensor_locations.shape[0:2]
+            waveform_scale_v = self.variable(
+                "waveform_scale", "waveform_scale",
+                lambda s : 1.0*numpy.ones(s, dtype=waveforms.dtype),
+                sensor_shape
+            )
+            waveform_scale = waveform_scale_v.value
+            waveforms = waveforms * waveform_scale.reshape(sensor_shape + (-1,))
+
+            return waveforms
         else:
             return None
 
 def init_gsensor_response(sensor_cfg):
 
     mlp_config = sensor_cfg.mlp_cfg
-    mlp, _ = init_mlp(mlp_config, nn.relu)
+    mlp, _ = init_mlp(mlp_config, nn.sigmoid)
 
     # The sipm locations:
     sipms_1D = numpy.arange(-235, 235, 10.) + 5

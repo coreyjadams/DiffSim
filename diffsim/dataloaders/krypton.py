@@ -343,7 +343,7 @@ class krypton:
         energy_selection   = energy != 0.0
 
         # Make sure we're selecting only active sensors:
-        active_selection   = numpy.take(db_lookup["active"], pmaps["S2Si"]["nsipm"]).astype(numpy.bool)
+        active_selection   = numpy.take(db_lookup["active"], pmaps["S2Si"]["nsipm"]).astype(bool)
 
 
         # Merge the selections:

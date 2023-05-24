@@ -37,8 +37,8 @@ class NEW_Simulator(nn.Module):
 
 
         return {
-        	"pmt_s2"  : pmt_response, 
-        	"sipm_s2" : sipm_response
+        	"S2Pmt" : pmt_response, 
+        	"S2Si"  : sipm_response
     	}
 
 

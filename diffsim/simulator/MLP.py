@@ -1,4 +1,5 @@
 import jax
+from jax import numpy
 
 import flax.linen as nn
 
@@ -18,6 +19,7 @@ class MLP(nn.Module):
             nn.Dense(n_out,
                 use_bias = self.bias,
                 kernel_init = nn.initializers.xavier_uniform(),
+                # bias_init   = nn.initializers.constant(10.)
                 )
             for n_out in self.n_outputs
         ]

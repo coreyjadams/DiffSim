@@ -5,13 +5,18 @@ import jax.numpy as numpy
 
 from flax.training import train_state, checkpoints
 
-
+# import orbax 
 
 def save_weights(save_path, model_name, parameters, opt_state, global_step, name = "checkpoint" ):
 
     # If the file for the model path already exists, we don't change it until after restoring:
     model_path = save_path / pathlib.Path(name) / pathlib.Path("model")
     opt_path   = save_path / pathlib.Path(name) / pathlib.Path("opt")
+
+    # checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+    # checkpointer.save(
+    #     directory = model_path, 
+    #     item      = parameters)
 
     # Take the network and snapshot it to file:
     checkpoints.save_checkpoint(
@@ -52,5 +57,7 @@ def restore_weights(save_path, model_name, name = "checkpoint"):
         ckpt_dir = opt_path,
         target   = None,
         prefix   = model_name)
+
+    print(restored_opt)
 
     return restored_model, restored_opt, global_step

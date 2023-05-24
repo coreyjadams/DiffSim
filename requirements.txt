@@ -1,5 +1,7 @@
 tables
+h5py
+pandas
 hydra-core
-tensorboardX
+tensorboard
 jax
 jaxlib

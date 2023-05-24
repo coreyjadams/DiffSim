@@ -52,7 +52,7 @@ from diffsim.config import Config
 
 from diffsim.simulator import init_simulator
 # from diffsim.simulator import NEW_Simulator, init_NEW_simulator
-from diffsim.simulator import init_rng_keys, update_rng_keys, batch_update_rng_keys
+from diffsim.simulator import batch_update_rng_keys
 
 from diffsim.utils import init_mpi, discover_local_rank
 from diffsim.utils import summary, model_summary
@@ -63,6 +63,8 @@ from diffsim.trainers import build_optimizer, close_over_training_step
 
 from diffsim.dataloaders import build_dataloader
 
+from diffsim.utils import comparison_plots
+
 def interupt_handler( sig, frame):
     logger = logging.getLogger()
 
@@ -70,10 +72,22 @@ def interupt_handler( sig, frame):
     global active
     active = False
 
+@jit
+def update_summary_params(metrics, sim_params): 
+
+    # Add the diffusion:
+    metrics["physics/diffusion_0"] = sim_params["diffusion"]["diff"]["diffusion"][0]
+    metrics["physics/diffusion_1"] = sim_params["diffusion"]["diff"]["diffusion"][1]
+    metrics["physics/diffusion_2"] = sim_params["diffusion"]["diff"]["diffusion"][2]
+    metrics["physics/el_spread"]   = sim_params["el_spread"]["sipm_s2"]["el_spread"][0]
+    metrics["physics/lifetime"]    = sim_params["lifetime"]["lifetime"]["lifetime"][0]
+
+    return metrics
+
+
 @hydra.main(version_base = None, config_path="../diffsim/config/recipes")
 def main(cfg : OmegaConf) -> None:
 
-    print(cfg)
     # Extend the save path:
     # cfg.save_path = cfg.save_path + f"/{cfg.hamiltonian.form}/"
     # cfg.save_path = cfg.save_path + f"/{cfg.sampler.n_particles}particles/"
@@ -174,101 +188,146 @@ def main(cfg : OmegaConf) -> None:
 
     train_step = close_over_training_step(function_registry, cfg, MPI_AVAILABLE)
 
-    # def train(self):
 
-    #     logger = logging.getLogger(NAME)
+    # Create a summary writer:
+    if should_do_io(MPI_AVAILABLE, rank):
+        writer = SummaryWriter(log_dir, flush_secs=20)
+    else:
+        writer = None
 
-    #     #
-    #     # with self.writer.as_default():
-    #     #     tf.summary.graph(self.wavefunction.get_concrete_function().graph)
+    # Restore the weights
 
-    #     # We attempt to restore the weights:
-    #     try:
-    #         self.restore()
-    #         logger.debug("Loaded weights, optimizer and global step!")
-    #     except Exception as excep:
-    #         logger.debug("Failed to load weights!")
-    #         logger.debug(excep)
-    #         pass
-
-
-    #     if MPI_AVAILABLE and hvd.size() > 1:
-    #         logger.info("Broadcasting initial model and optimizer state.")
-    #         # We have to broadcast the wavefunction parameter here:
-    #         hvd.broadcast_variables(self.simulator.variables, 0)
-
-    #         # And the global step:
-    #         self.global_step = hvd.broadcast_object(
-    #             self.global_step, root_rank=0)
-
-    #         # And the optimizer:
-    #         hvd.broadcast_variables(self.trainer.optimizer.variables(), root_rank=0)
-    #         logger.info("Done broadcasting initial model and optimizer state.")
+    try:
+        r_w_params, r_opt, r_global_step = restore_weights(cfg.save_path, model_name)
+        # Catch the nothing returned case:
+        assert r_global_step is not None
+        assert r_w_params    is not None
+        assert r_opt         is not None
+        w_params    = r_w_params
+        opt_state   = r_opt
+        global_step = r_global_step
+        logger.info("Loaded weights, optimizer and global step!")
+    except Exception as excep:
+        logger.info("Failed to load weights!")
+        logger.info(excep)
+        pass
 
 
-    #     checkpoint_iteration = 200
 
-    #     # Before beginning the loop, manually flush the buffer:
-    #     logger.handlers[0].flush()
+    if MPI_AVAILABLE and size > 1:
+        logger.info("Broadcasting initial model and opt state.")
+        # We have to broadcast the wavefunction parameter here:
+        token = None
 
-    #     best_energy = 999
+        # First, flatten the parameter trees:
+        w_params_flat, treedef = jax.tree_util.tree_flatten(w_params)
+
+        # need to unfreeze to do this:
+        for i, param in enumerate(w_params_flat):
+            w_params_flat[i], token = mpi4jax.bcast(
+                w_params_flat[i],
+                root = 0,
+                comm = MPI.COMM_WORLD,
+                token = token
+            )
+        # And re-tree it:
+        w_params = jax.tree_util.tree_unflatten(tree_def, w_params_flat)
+
+        # Now do the optimizer the same way:
+        opt_state_flat, opt_treedef = jax.tree_util.tree_flatten(opt_state)
+
+        # need to unfreeze to do this:
+        for i, param in enumerate(opt_state_flat):
+            opt_state_flat[i], token = mpi4jax.bcast(
+                opt_state_flat[i],
+                root  = 0,
+                comm  = MPI.COMM_WORLD,
+                token = token
+            )
+        # And re-tree it:
+        opt_state = jax.tree_util.tree_unflatten(opt_treedef, opt_state_flat)
+
+
+        # And the global step:
+        global_step, token = mpi4jax.bcast(global_step,
+                        root = 0,
+                        comm = MPI.COMM_WORLD,
+                        token = token)
+        logger.info("Done broadcasting initial model and optimizer state.")
 
     dl_iterable = dataloader.iterate()
-    logger.debug("MOVE DATA LOADING BACK")
-    batch = next(dl_iterable)
+    comp_data = next(dl_iterable)
+    # logger.debug("MOVE DATA LOADING BACK")
+    
+    batch = comp_data
+    # # batch = next(dl_iterable)
+    # prefactor = {
+    #             "S2Pmt" : 1.,
+    #             "S2Si"  : 1.
+    #         }
+
+    # for key in batch.keys():
+    #     if key in prefactor.keys():
+    #         batch[key] = prefactor[key]*batch[key]
 
     global_step = 0
 
     while global_step < cfg.run.iterations:
+        batch = next(dl_iterable)
 
         if not active: break
 
-        # if profile:
-        #     if not MPI_AVAILABLE or hvd.rank() == 0:
-        #         tf.profiler.experimental.start(str(save_path))
-        #         tf.summary.trace_on(graph=True)
+        if cfg.run.profile:
+            if should_do_io(MPI_AVAILABLE, rank):
+                jax.profiler.start_trace(str(cfg.save_path) + "profile")
 
         metrics = {}
         start = time.time()
 
         metrics["io_time"] = time.time() - start
 
-        sim_params, opt_state, loss = train_step(
+        # Split the keys:
+        next_rng_keys = batch_update_rng_keys(next_rng_keys)
+
+        sim_params, opt_state, loss, train_metrics = train_step(
             sim_params, 
             opt_state,
             batch,
             next_rng_keys)
 
-        # UPDATE THE RNG SEEDS!!!
+        # print(opt_state)
 
-        # model_parameters, train_metrics = \
-        #     self.trainer.train_iteration(batch, self.global_step, model_parameters)
-        # print(model_parameters.keys())
-        # print(model_parameters['diffusion'])
+        metrics.update(train_metrics)
+        # Add to the metrics the physical parameters:
+        metrics = update_summary_params(metrics, sim_params)
+        if cfg.run.profile:
+            if should_do_io(MPI_AVAILABLE, rank):
+                x.block_until_ready()
+                jax.profiler.save_device_memory_profile(str(cfg.save_path) + f"memory{global_step}.prof")
+
+
+
         metrics.update({"loss" : loss})
-        # metrics.update(train_metrics)
 
 
         metrics['time'] = time.time() - start
 
-        # simulator_metrics = self.simulator.generate_summary_dict()
-        # metrics.update(simulator_metrics)
+        if should_do_io(MPI_AVAILABLE, rank):
+            summary(writer, metrics, global_step)
 
 
-        # self.summary(metrics, self.global_step)
+        # Add comparison plots every N iterations
+        if global_step % cfg.run.image_iteration == 0:
+            # print(sim_params)
+            if should_do_io(MPI_AVAILABLE, rank):
+                save_dir = cfg.save_path / pathlib.Path(f'comp/{global_step}/')
 
-        # # Add comparison plots every iteration for now:
-        # if self.global_step % self.cfg.run.image_iteration == 0:
-        #     if not MPI_AVAILABLE or hvd.rank() == 0:
-        #         save_dir = self.save_path / pathlib.Path(f'comp/{self.global_step}/')
-        #         self.trainer.comparison_plots(save_dir)
-
-        # # Add the weights to the summary every 100 iterations:
-        # if self.global_step % 100 == 0:
-        #     if not MPI_AVAILABLE or hvd.rank() == 0:
-        #         parameters = self.trainer.parameters()
-        #         # self.model_summary(parameters, self.global_step)
-
+                simulated_data = function_registry["simulate"](
+                    sim_params, 
+                    comp_data['energy_deposits'], 
+                    rngs=next_rng_keys
+                )
+                comparison_plots(save_dir, simulated_data, comp_data)
 
         if global_step % 1 == 0:
             logger.info(f"step = {global_step}, loss = {metrics['loss']:.3f}")
@@ -277,97 +336,25 @@ def main(cfg : OmegaConf) -> None:
         # Iterate:
         global_step += 1
 
-        # if self.cfg.run.checkpoint % self.global_step == 0:
-        #     if not MPI_AVAILABLE or hvd.rank() == 0:
-        #         # TODO here
-        #         # self.save_weights()
-        #         pass
+        if global_step % cfg.run.checkpoint  == 0:
+            if should_do_io(MPI_AVAILABLE, rank):
+                save_weights(cfg.save_path, model_name, sim_params, opt_state, global_step)
 
-        # if self.profile:
-        #     if not MPI_AVAILABLE or hvd.rank() == 0:
-        #         tf.profiler.experimental.stop()
-        #         tf.summary.trace_off()
+        if cfg.run.profile:
+            if should_do_io(MPI_AVAILABLE, rank):
+                jax.profiler.stop_trace()
 
-    #TODO HERE
-    # # Save the weights at the very end:
-    # if not MPI_AVAILABLE or hvd.rank() == 0:
-    #     self.save_weights()
-
+    # Save the weights at the very end:
+    if should_do_io(MPI_AVAILABLE, rank):
+        try:
+            save_weights(cfg.save_path, model_name, w_params, global_step)
+        except:
+            pass
 
 
 
 
 
-
-    # def build_trainer(self, batch, fn, params):
-
-    #     # Shouldn't reach this portion unless training.
-    #     from trainers import supervised_trainer
-
-    #     trainer = supervised_trainer(self.config.mode, batch, fn, params)
-    #     return trainer
-
-    # def restore(self):
-    #     logger = logging.getLogger(NAME)
-
-    #     name = "checkpoint/"
-    #     if not MPI_AVAILABLE or hvd.rank() == 0:
-    #         logger.info("Trying to restore model")
-
-
-    #         # Does the model exist?
-    #         # Note that tensorflow adds '.index' and '.data-...' to the name
-    #         tf_p = pathlib.Path(name) / pathlib.Path(str(self.model_name) + ".index")
-
-
-    #         # Check for tensorflow first:
-
-    #         model_restored = False
-    #         tf_found_path = None
-    #         for source_path in [self.save_path, pathlib.Path('./')]:
-    #             if (source_path / tf_p ).is_file():
-    #                 # Note: we use the original path without the '.index' added
-    #                 tf_p = pathlib.Path(name) / pathlib.Path(str(self.model_name))
-    #                 tf_found_path = source_path / tf_p
-    #                 logger.info(f"Resolved weights path is {tf_found_path}")
-    #                 break
-
-    #         if tf_found_path is None:
-    #             raise OSError(f"{self.model_name} not found.")
-    #         else:
-    #             try:
-    #                 self.simulator.load_weights(tf_found_path)
-    #                 model_restored = True
-    #                 logger.info("Restored from tensorflow!")
-    #             except Exception as e:
-    #                 logger.debug(e)
-    #                 logger.info("Failed to load weights via keras load_weights function.")
-
-
-    #         # We get here only if one method restored.
-    #         # Attempt to restore a global step and optimizer but it's not necessary
-    #         try:
-    #             with open(self.save_path / pathlib.Path(name) / pathlib.Path("global_step.pkl"), 'rb') as _f:
-    #                 self.global_step = pickle.load(file=_f)
-    #         except:
-    #             logger.info("Could not restore a global_step or "
-    #                 "an optimizer state.  Starting over with restored weights only.")
-
-
-    # def analysis(self):
-
-    #     # in the summary, we make plots and print weights, etc.
-    #     logger = logging.getLogger(NAME)
-
-    #     try:
-    #         self.restore()
-    #         logger.debug("Loaded weights, optimizer and global step!")
-    #     except Exception as excep:
-    #         logger.debug("Failed to load weights!")
-    #         logger.debug(excep)
-    #         pass
-
-    #     logger.info(self.simulator.trainable_variables)
 
 def iotest(dataloader, config):
 
@@ -398,7 +385,6 @@ def iotest(dataloader, config):
         metrics['time'] = time.time() - start
 
 
-
         if global_step % 1 == 0:
             logger.info(f"step = {global_step}")
             logger.info(f"time = {metrics['time']:.3f} ({metrics['io_time']:.3f} io)")
@@ -407,79 +393,6 @@ def iotest(dataloader, config):
         global_step += 1
 
 
-    # def model_summary(self, weights, step):
-    #     # with self.writer.as_default():
-    #     for key in weights:
-    #         self.writer.add_histogram("weights/" + key, weights[key], step)
-
-    # def wavefunction_summary(self, latest_psi, step):
-    #     # with self.writer.as_default():
-    #     self.writer.add_histogram("psi", latest_psi, step)
-
-
-    # # @tf.function
-    # def summary(self, metrics, step):
-    #     if not MPI_AVAILABLE or hvd.rank() == 0:
-    #         # with self.writer.as_default():
-    #         for key in metrics:
-    #             self.writer.add_scalar(key, metrics[key], step)
-
-
-    # def save_weights(self):
-
-    #     name = "checkpoint"
-
-    #     # If the file for the model path already exists, we don't change it until after restoring:
-    #     self.model_path = self.save_path / pathlib.Path(name) / self.model_name
-
-
-    #     # Take the network and snapshot it to file:
-    #     self.simulator.save_weights(self.model_path)
-    #     # Save the global step:
-    #     with open(self.save_path /  pathlib.Path(name) / pathlib.Path("global_step.pkl"), 'wb') as _f:
-    #         pickle.dump(self.global_step, file=_f)
-
-    # def finalize(self):
-    #     self.dataloader.shutdown()
-
-    #     if not MPI_AVAILABLE or hvd.rank() == 0:
-    #         from config.mode import ModeKind
-    #         if self.config.mode.name == ModeKind.train:
-    #             # self.save_weights()
-    #             pass
-
-    # def interupt_handler(self, sig, frame):
-    #     logger = logging.getLogger(NAME)
-    #     self.dataloader.shutdown()
-    #     logger.info("Caught interrupt, exiting gracefully.")
-    #     self.active = False
-
-
-# @hydra.main(config_path="../src/config", config_name="config")
-# def main(cfg : Config) -> None:
-
-#     # Prepare directories:
-#     work_dir = pathlib.Path(cfg.save_path)
-#     work_dir.mkdir(parents=True, exist_ok=True)
-#     log_dir = pathlib.Path(cfg.save_path + "/log/")
-#     log_dir.mkdir(parents=True, exist_ok=True)
-
-#     # cd in to the job directory since we disabled that with hydra:
-#     # os.chdir(cfg.hydra.run.dir)
-#     e = exec(cfg)
-#     signal.signal(signal.SIGINT, e.interupt_handler)
-
-#     from config.mode import ModeKind
-#     if cfg.mode.name == ModeKind.iotest:
-#         e.iotest()
-#     elif cfg.mode.name == ModeKind.train:
-#         e.train()
-#     elif cfg.mode.name == ModeKind.inference:
-#         e.inference()
-#     elif cfg.mode.name == ModeKind.analysis:
-#         e.analysis()
-#     # elif :
-#     e.finalize()
 
 if __name__ == "__main__":
     import sys

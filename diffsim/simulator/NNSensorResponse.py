@@ -17,7 +17,8 @@ class NNSensorResponse(nn.Module):
 
     """
     active:           bool 
-    sensor_simulator: MLP
+    el_light_prob:    MLP # NN that simulates the probability of light from EL position hitting sensor
+    el_light_amp:     MLP # NN that simulates the amount of light from EL position overall
     waveform_ticks:   int
     bin_sigma:        float
 
@@ -40,7 +41,6 @@ class NNSensorResponse(nn.Module):
 
         exp_values = numpy.exp( - (exp_input - z_positions)**2.  / (2. * self.bin_sigma))
 
-
         # Scale by the weights:
         exp_values = exp_values * weights
 
@@ -55,31 +55,51 @@ class NNSensorResponse(nn.Module):
     def __call__(self, simulator_input, z_positions, mask):
 
         if self.active:
+            # Put this through sigmoid to map from 0 to 1:
+            sensor_probs = nn.sigmoid(self.el_light_prob(simulator_input))
+            # Put this into exp to ensure >=0 and increase dynamic range:
+            sensor_amp   = numpy.exp(self.el_light_amp(simulator_input) )
 
-            response_of_sensors = self.sensor_simulator(simulator_input)
+            response_of_sensors = sensor_amp * sensor_probs
 
             waveforms = self.build_waveforms(response_of_sensors, z_positions, mask)
 
             waveforms =  waveforms.sum(axis=0)
 
+            # # The waveforms are scaled overall by a parameter:
+            # waveform_scale_v = self.variable(
+            #     "waveform_scale", "waveform_scale",
+            #     lambda s : 100.*numpy.ones(s, dtype=waveforms.dtype),
+            #     (1,), # shape is scalar
+            # )
+            # waveform_scale = waveform_scale_v.value
+            # waveforms = waveforms * waveform_scale
+
             return waveforms
+
+import copy
 
 def init_nnsensor_response(sensor_cfg):
 
-    mlp_config = sensor_cfg.mlp_cfg
-    mlp_config.layers.append(sensor_cfg.n_sensors)
-    mlp, _ = init_mlp(mlp_config, nn.relu)
+    mlp_config_sens = copy.copy(sensor_cfg.mlp_cfg)
+    mlp_config_amp  = copy.copy(sensor_cfg.mlp_cfg)
 
-    # mlp = MLP(
-    #     n_outputs  = [64, 12],
-    #     bias       = True,
-    #     activation = nn.relu,
-    #     last_activation = True
-    # )
+    mlp_config_sens.layers.append(sensor_cfg.n_sensors)
+    # This MLP has 12 outputs and gets put into sigmoid
+    # It represents the probability that light from this part of the EL
+    # Hits any particular sensor.
+    mlp_sens, _ = init_mlp(mlp_config_sens, nn.relu)
+
+    # This MLP is the overall amount of light for this
+    # region of the EL, and has only 1 output
+    mlp_config_amp.layers.append(1)
+    mlp_amp, _ = init_mlp(mlp_config_amp, nn.relu)
+
 
     sr = NNSensorResponse(
         active           = sensor_cfg.active,
-        sensor_simulator = mlp, 
+        el_light_prob    = mlp_amp,
+        el_light_amp     = mlp_sens ,
         waveform_ticks   = sensor_cfg.waveform_ticks,
         bin_sigma        = sensor_cfg.bin_sigma
     )

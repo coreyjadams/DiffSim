@@ -67,7 +67,7 @@ class ElectronGenerator(nn.Module):
 
         # Get the number of electrons per position:
         n_electrons = self.energy_to_electrons(energies, normal_draws)
-
+        
         # Turn the number of electrons into the right shape:
 
         broadcasted_electrons = self.broadcast_electron(positions)
