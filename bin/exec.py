@@ -27,6 +27,7 @@ from hydra.core.utils import configure_log
 hydra.output_subdir = None
 
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
+os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
@@ -36,6 +37,8 @@ import jax.numpy as numpy
 import jax.tree_util as tree_util
 import optax
 
+# if
+# def profile(x): return x
 
 from tensorboardX import SummaryWriter
 
@@ -56,7 +59,7 @@ from diffsim.simulator import batch_update_rng_keys
 
 from diffsim.utils import init_mpi, discover_local_rank
 from diffsim.utils import summary, model_summary
-from diffsim.utils import save_weights, restore_weights
+from diffsim.utils import init_checkpointer
 from diffsim.utils import set_compute_parameters, configure_logger, should_do_io
 
 from diffsim.trainers import build_optimizer, close_over_training_step
@@ -73,7 +76,7 @@ def interupt_handler( sig, frame):
     active = False
 
 @jit
-def update_summary_params(metrics, sim_params): 
+def update_summary_params(metrics, sim_params):
 
     # Add the diffusion:
     metrics["physics/diffusion_0"] = sim_params["diffusion"]["diff"]["diffusion"][0]
@@ -83,6 +86,15 @@ def update_summary_params(metrics, sim_params):
     metrics["physics/lifetime"]    = sim_params["lifetime"]["lifetime"]["lifetime"][0]
 
     return metrics
+
+@jit
+def scale_data(input_batch, prefactor):
+    # This scales the target data to whatever prefactor we are using:
+    for key in input_batch.keys():
+        if key in prefactor.keys():
+            input_batch[key] = prefactor[key]*input_batch[key]
+
+    return input_batch
 
 
 @hydra.main(version_base = None, config_path="../diffsim/config/recipes")
@@ -95,6 +107,7 @@ def main(cfg : OmegaConf) -> None:
     cfg.save_path = cfg.save_path + f"/{cfg.run.id}/"
 
 
+
     # Prepare directories:
     work_dir = pathlib.Path(cfg.save_path)
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -103,14 +116,22 @@ def main(cfg : OmegaConf) -> None:
 
     model_name = pathlib.Path(cfg["model_name"])
 
+    # Here we initialize the checkpointer functions:
+    save_weights, restore_weights = init_checkpointer(work_dir)
+
+
     MPI_AVAILABLE, rank, size = init_mpi(cfg.run.distributed)
-    
+
+
+
     # Figure out the local rank if MPI is available:
     if MPI_AVAILABLE:
         local_rank = discover_local_rank()
     else:
         local_rank = 0
     # model_name = config.model_name
+
+
 
     configure_logger(log_dir, MPI_AVAILABLE, rank)
 
@@ -128,226 +149,252 @@ def main(cfg : OmegaConf) -> None:
     signal.signal(signal.SIGINT, interupt_handler)
 
     global_step = 0
-
     target_device = set_compute_parameters(local_rank)
 
+    # At this point, jax has already allocated some memory on the wrong device.
 
-    
 
     # Always construct a dataloader:
     dataloader  = build_dataloader(cfg)
+
 
     # If it's just IO testing, run that here then exit:
     from diffsim.config.mode import ModeKind
     if cfg.mode.name == ModeKind.iotest:
         iotest(dataloader, cfg)
-        return 
+        return
+    with jax.default_device(target_device):
 
-    # Initialize the global random seed:
-    if cfg.seed == -1:
-        global_random_seed = int(time.time())
-    else:
-        global_random_seed = cfg.seed
-
-    if MPI_AVAILABLE and size > 1:
-        if rank == 0:
-            # Create a single master key
-            master_key = jax.device_put(random.PRNGKey(global_random_seed), target_device)
+        # Initialize the global random seed:
+        if cfg.seed == -1:
+            global_random_seed = int(time.time())
         else:
-            # This isn't meaningful except as a placeholder:
-            master_key = jax.device_put(random.PRNGKey(0), target_device)
+            global_random_seed = cfg.seed
 
-        # Here, sync up all ranks to the same master key
-        import mpi4jax
-        from mpi4py import MPI
-        master_key, token = mpi4jax.bcast(master_key, root=0, comm=MPI.COMM_WORLD)
-    else:
-        master_key = jax.device_put(random.PRNGKey(global_random_seed), target_device)
+        if MPI_AVAILABLE and size > 1:
+            if rank == 0:
+                # Create a single master key
+                master_key = jax.device_put(random.PRNGKey(global_random_seed), target_device)
+            else:
+                # This isn't meaningful except as a placeholder:
+                master_key = jax.device_put(random.PRNGKey(0), target_device)
 
-    # Initialize the model:
-    example_data = next(dataloader.iterate())
-    sim_func, sim_params, next_rng_keys = init_simulator(master_key, cfg, example_data)
+            # Here, sync up all ranks to the same master key
+            import mpi4jax
+            from mpi4py import MPI
+            master_key, token = mpi4jax.bcast(master_key, root=0, comm=MPI.COMM_WORLD)
+        else:
+            master_key = jax.device_put(random.PRNGKey(global_random_seed), target_device)
 
-    function_registry = {
-        "simulate" : sim_func
-    }
+        # Initialize the model:
+        example_data = next(dataloader.iterate())
+        sim_func, sim_params, next_rng_keys = init_simulator(master_key, cfg, example_data)
 
-    n_parameters = 0
-    flat_params, tree_def = tree_util.tree_flatten(sim_params)
-    for p in flat_params:
-        n_parameters += numpy.prod(numpy.asarray(p.shape))
-    logger.info(f"Number of parameters in this network: {n_parameters}")
+        function_registry = {
+            "simulate" : sim_func
+        }
 
-
-    optimizer, opt_state = build_optimizer(cfg, sim_params)
-
-    function_registry['optimizer'] = optimizer
-
-    #     # self.trainer = self.build_trainer(batch, self.simulator_fn, self.simulator_params)
-
-
-    train_step = close_over_training_step(function_registry, cfg, MPI_AVAILABLE)
+        n_parameters = 0
+        flat_params, tree_def = tree_util.tree_flatten(sim_params)
+        for p in flat_params:
+            n_parameters += numpy.prod(numpy.asarray(p.shape))
+        logger.info(f"Number of parameters in this network: {n_parameters}")
 
 
-    # Create a summary writer:
-    if should_do_io(MPI_AVAILABLE, rank):
-        writer = SummaryWriter(log_dir, flush_secs=20)
-    else:
-        writer = None
+        optimizer, opt_state = build_optimizer(cfg, sim_params)
 
-    # Restore the weights
+        function_registry['optimizer'] = optimizer
 
-    try:
-        r_w_params, r_opt, r_global_step = restore_weights(cfg.save_path, model_name)
-        # Catch the nothing returned case:
-        assert r_global_step is not None
-        assert r_w_params    is not None
-        assert r_opt         is not None
-        w_params    = r_w_params
-        opt_state   = r_opt
-        global_step = r_global_step
-        logger.info("Loaded weights, optimizer and global step!")
-    except Exception as excep:
-        logger.info("Failed to load weights!")
-        logger.info(excep)
-        pass
+        #     # self.trainer = self.build_trainer(batch, self.simulator_fn, self.simulator_params)
 
 
-
-    if MPI_AVAILABLE and size > 1:
-        logger.info("Broadcasting initial model and opt state.")
-        # We have to broadcast the wavefunction parameter here:
-        token = None
-
-        # First, flatten the parameter trees:
-        w_params_flat, treedef = jax.tree_util.tree_flatten(w_params)
-
-        # need to unfreeze to do this:
-        for i, param in enumerate(w_params_flat):
-            w_params_flat[i], token = mpi4jax.bcast(
-                w_params_flat[i],
-                root = 0,
-                comm = MPI.COMM_WORLD,
-                token = token
-            )
-        # And re-tree it:
-        w_params = jax.tree_util.tree_unflatten(tree_def, w_params_flat)
-
-        # Now do the optimizer the same way:
-        opt_state_flat, opt_treedef = jax.tree_util.tree_flatten(opt_state)
-
-        # need to unfreeze to do this:
-        for i, param in enumerate(opt_state_flat):
-            opt_state_flat[i], token = mpi4jax.bcast(
-                opt_state_flat[i],
-                root  = 0,
-                comm  = MPI.COMM_WORLD,
-                token = token
-            )
-        # And re-tree it:
-        opt_state = jax.tree_util.tree_unflatten(opt_treedef, opt_state_flat)
+        train_step = close_over_training_step(function_registry, cfg, MPI_AVAILABLE)
 
 
-        # And the global step:
-        global_step, token = mpi4jax.bcast(global_step,
-                        root = 0,
-                        comm = MPI.COMM_WORLD,
-                        token = token)
-        logger.info("Done broadcasting initial model and optimizer state.")
-
-    dl_iterable = dataloader.iterate()
-    comp_data = next(dl_iterable)
-    # logger.debug("MOVE DATA LOADING BACK")
-    
-    batch = comp_data
-    # # batch = next(dl_iterable)
-    # prefactor = {
-    #             "S2Pmt" : 1.,
-    #             "S2Si"  : 1.
-    #         }
-
-    # for key in batch.keys():
-    #     if key in prefactor.keys():
-    #         batch[key] = prefactor[key]*batch[key]
-
-    global_step = 0
-
-    while global_step < cfg.run.iterations:
-        batch = next(dl_iterable)
-
-        if not active: break
-
-        if cfg.run.profile:
-            if should_do_io(MPI_AVAILABLE, rank):
-                jax.profiler.start_trace(str(cfg.save_path) + "profile")
-
-        metrics = {}
-        start = time.time()
-
-        metrics["io_time"] = time.time() - start
-
-        # Split the keys:
-        next_rng_keys = batch_update_rng_keys(next_rng_keys)
-
-        sim_params, opt_state, loss, train_metrics = train_step(
-            sim_params, 
-            opt_state,
-            batch,
-            next_rng_keys)
-
-        # print(opt_state)
-
-        metrics.update(train_metrics)
-        # Add to the metrics the physical parameters:
-        metrics = update_summary_params(metrics, sim_params)
-        if cfg.run.profile:
-            if should_do_io(MPI_AVAILABLE, rank):
-                x.block_until_ready()
-                jax.profiler.save_device_memory_profile(str(cfg.save_path) + f"memory{global_step}.prof")
-
-
-
-        metrics.update({"loss" : loss})
-
-
-        metrics['time'] = time.time() - start
-
+        # Create a summary writer:
         if should_do_io(MPI_AVAILABLE, rank):
-            summary(writer, metrics, global_step)
+            writer = SummaryWriter(log_dir, flush_secs=20)
+        else:
+            writer = None
+
+        # Restore the weights
+
+        try:
+            r_sim_params, r_opt, r_global_step = restore_weights()
+            # Catch the nothing returned case:
+            assert r_global_step is not None
+            assert r_sim_params    is not None
+            assert r_opt         is not None
+            sim_params  = r_sim_params
+            opt_state   = r_opt
+            global_step = r_global_step
+            logger.info("Loaded weights, optimizer and global step!")
+        except Exception as excep:
+            logger.info("Failed to load weights!")
+            logger.info(excep)
+            pass
 
 
-        # Add comparison plots every N iterations
-        if global_step % cfg.run.image_iteration == 0:
-            # print(sim_params)
-            if should_do_io(MPI_AVAILABLE, rank):
-                save_dir = cfg.save_path / pathlib.Path(f'comp/{global_step}/')
 
-                simulated_data = function_registry["simulate"](
-                    sim_params, 
-                    comp_data['energy_deposits'], 
-                    rngs=next_rng_keys
+        if MPI_AVAILABLE and size > 1:
+            logger.info("Broadcasting initial model and opt state.")
+            # We have to broadcast the wavefunction parameter here:
+            token = None
+
+            # First, flatten the parameter trees:
+            sim_params_flat, treedef = jax.tree_util.tree_flatten(sim_params)
+
+            # need to unfreeze to do this:
+            for i, param in enumerate(sim_params_flat):
+                sim_params_flat[i], token = mpi4jax.bcast(
+                    sim_params_flat[i],
+                    root = 0,
+                    comm = MPI.COMM_WORLD,
+                    token = token
                 )
-                comparison_plots(save_dir, simulated_data, comp_data)
+            # And re-tree it:
+            sim_params = jax.tree_util.tree_unflatten(tree_def, sim_params_flat)
 
-        if global_step % 1 == 0:
-            logger.info(f"step = {global_step}, loss = {metrics['loss']:.3f}")
-            logger.info(f"time = {metrics['time']:.3f} ({metrics['io_time']:.3f} io)")
+            # Now do the optimizer the same way:
+            opt_state_flat, opt_treedef = jax.tree_util.tree_flatten(opt_state)
 
-        # Iterate:
-        global_step += 1
+            # need to unfreeze to do this:
+            for i, param in enumerate(opt_state_flat):
+                opt_state_flat[i], token = mpi4jax.bcast(
+                    opt_state_flat[i],
+                    root  = 0,
+                    comm  = MPI.COMM_WORLD,
+                    token = token
+                )
+            # And re-tree it:
+            opt_state = jax.tree_util.tree_unflatten(opt_treedef, opt_state_flat)
 
-        if global_step % cfg.run.checkpoint  == 0:
+
+            # And the global step:
+            global_step, token = mpi4jax.bcast(global_step,
+                            root = 0,
+                            comm = MPI.COMM_WORLD,
+                            token = token)
+            logger.info("Done broadcasting initial model and optimizer state.")
+
+        dl_iterable = dataloader.iterate()
+        comp_data = next(dl_iterable)
+
+        print("comp_data['S2Pmt'].shape: ", comp_data['S2Pmt'].shape, flush=True)
+
+        prefactor = {
+                "S2Pmt" : 1.e-2,
+                "S2Si"  : 1.e1
+            }
+
+        # for key in comp_data.keys():
+        #     if key in prefactor.keys():
+        #         comp_data[key] = prefactor[key]*comp_data[key]
+
+        batch = comp_data
+
+        global_step = 0
+        end = None
+
+        while global_step < cfg.run.iterations:
+
+            if not active: break
+
+            metrics = {}
+            start = time.time()
+
+            batch = next(dl_iterable)
+
+            batch = scale_data(batch, prefactor)
+
+            if cfg.run.profile:
+                if should_do_io(MPI_AVAILABLE, rank):
+                    jax.profiler.start_trace(str(cfg.save_path) + "profile")
+
+
+            metrics["io_time"] = time.time() - start
+
+            # Split the keys:
+            next_rng_keys = batch_update_rng_keys(next_rng_keys)
+
+            sim_params, opt_state, loss, train_metrics = train_step(
+                sim_params,
+                opt_state,
+                batch,
+                next_rng_keys)
+
+            # Remove the residual effect on the metrics:
+            for key in train_metrics.keys():
+                prefactor_key = key.replace("residual/", "")
+                if prefactor_key in prefactor.keys():
+                    train_metrics[key] = train_metrics[key] / prefactor[prefactor_key]
+
+
+
+            metrics.update(train_metrics)
+            # Add to the metrics the physical parameters:
+            metrics = update_summary_params(metrics, sim_params)
+            if cfg.run.profile:
+                if should_do_io(MPI_AVAILABLE, rank):
+                    x.block_until_ready()
+                    jax.profiler.save_device_memory_profile(str(cfg.save_path) + f"memory{global_step}.prof")
+
+
+
+            metrics.update({"loss" : loss})
+
+
+            # Add comparison plots every N iterations
+            if global_step % cfg.run.image_iteration == 0:
+                # print(sim_params)
+                if should_do_io(MPI_AVAILABLE, rank):
+                    save_dir = cfg.save_path / pathlib.Path(f'comp/{global_step}/')
+
+                    simulated_data = function_registry["simulate"](
+                        sim_params,
+                        comp_data['energy_deposits'],
+                        rngs=next_rng_keys
+                    )
+
+                    # Remove the prefactor on simulated data for this:
+                    # It's not applied to the comp data, but we have to scale up the output
+                    # according to the prefactor
+                    for key in simulated_data.keys():
+                        if key in prefactor.keys():
+                            simulated_data[key] = simulated_data[key] / prefactor[key]
+
+                    comparison_plots(save_dir, simulated_data, comp_data)
+
+
+
+
+            if global_step % cfg.run.checkpoint  == 0:
+                if should_do_io(MPI_AVAILABLE, rank):
+                    save_weights(sim_params, opt_state, global_step)
+
+            if cfg.run.profile:
+                if should_do_io(MPI_AVAILABLE, rank):
+                    jax.profiler.stop_trace()
+
+
+            end = time.time()
+            metrics['time'] = time.time() - start
+            metrics['img_per_sec'] = size * cfg.run.minibatch_size / metrics['time']
+
             if should_do_io(MPI_AVAILABLE, rank):
-                save_weights(cfg.save_path, model_name, sim_params, opt_state, global_step)
+                summary(writer, metrics, global_step)
 
-        if cfg.run.profile:
-            if should_do_io(MPI_AVAILABLE, rank):
-                jax.profiler.stop_trace()
+            # Iterate:
+            global_step += 1
+
+            if global_step % 1 == 0:
+                logger.info(f"step = {global_step}, loss = {metrics['loss']:.3f}")
+                logger.info(f"time = {metrics['time']:.3f} ({metrics['io_time']:.3f} io) - {metrics['img_per_sec']:.3f} Img/s")
 
     # Save the weights at the very end:
     if should_do_io(MPI_AVAILABLE, rank):
         try:
-            save_weights(cfg.save_path, model_name, w_params, global_step)
+            save_weights(sim_params, opt_state, global_step)
         except:
             pass
 
