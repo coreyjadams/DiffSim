@@ -4,3 +4,7 @@ defaults:
 
 save_path: output/${run.id}/${data.name}/
 model_name: model
+
+mode:
+  optimizer: novograd
+  learning_rate: 0.01

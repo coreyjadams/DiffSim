@@ -51,7 +51,7 @@ def plot_pmts(plot_dir, sim_pmts, real_pmts):
         start = max(peak_tick - 50, 0)
         end = min(peak_tick + 50, 550)
 
-        x_ticks = numpy.arange(start, end)
+        x_ticks = numpy.arange(start, end) + start
 
         fig = plt.figure(figsize=(16,9))
         plt.plot(x_ticks, sim_pmts[i_pmt][start:end], label=f"Generated PMT {i_pmt} signal")
@@ -69,7 +69,7 @@ def plot_pmts(plot_dir, sim_pmts, real_pmts):
 
 def plot_sipms(plot_dir, sim_sipms, real_sipms):
 
-    x_ticks = numpy.arange(550)
+    # x_ticks = numpy.arange(550)
     plot_dir.mkdir(parents=True, exist_ok=True)
 
 
@@ -83,12 +83,19 @@ def plot_sipms(plot_dir, sim_sipms, real_sipms):
         for i_y in [max_y -1, max_y, max_y + 1]:
             if i_y < 0 or i_y >= 47: continue
 
+            # Select the up-to-100 nearest points for plotting:
+            start = max(max_z - 50, 0)
+            end = min(max_z + 50, 550)
+
+            x_ticks = numpy.arange(start, end) + start
+
+
             # print(sim_sipms[i_x][i_y][max_z-5:max_z+5])
             # print(real_sipms[i_x][i_y][max_z-5:max_z+5])
 
             fig = plt.figure(figsize=(16,9))
-            plt.plot(x_ticks, sim_sipms[i_x][i_y], label=f"Generated SiPM [{i_x}, {i_y}] signal")
-            plt.plot(x_ticks, real_sipms[i_x][i_y], label=f"Real SiPM [{i_x}, {i_y}] signal")
+            plt.plot(x_ticks, sim_sipms[i_x][i_y][start:end], label=f"Generated SiPM [{i_x}, {i_y}] signal")
+            plt.plot(x_ticks, real_sipms[i_x][i_y][start:end], label=f"Real SiPM [{i_x}, {i_y}] signal")
             plt.legend()
             plt.grid(True)
             plt.xlabel("Time Tick [us]")

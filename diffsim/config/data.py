@@ -12,9 +12,9 @@ class Data:
 @dataclass
 class Krypton(Data):
     name: str = "krypton"
-    path: str = "/data/datasets/NEXT/White-runs/8677/hdf5/prod/v1.2.0/20191122/"
-    # path: str = "/lus/grand/projects/datascience/cadams/datasets/NEXT/new_raw_data/"
-    run: int  = 8677
+    # path: str = "/data/datasets/NEXT/White-runs/8677/hdf5/prod/v1.2.0/20191122/"
+    path: str = "/lus/grand/projects/datascience/cadams/datasets/NEXT/new_raw_data/"
+    run: int  = 8678
 
 
 cs = ConfigStore.instance()

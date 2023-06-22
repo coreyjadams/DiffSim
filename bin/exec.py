@@ -37,6 +37,8 @@ import jax.numpy as numpy
 import jax.tree_util as tree_util
 import optax
 
+from flax.training import train_state
+
 # if
 # def profile(x): return x
 
@@ -148,7 +150,6 @@ def main(cfg : OmegaConf) -> None:
     # Active is a global so that we can interrupt the train loop gracefully
     signal.signal(signal.SIGINT, interupt_handler)
 
-    global_step = 0
     target_device = set_compute_parameters(local_rank)
 
     # At this point, jax has already allocated some memory on the wrong device.
@@ -190,9 +191,6 @@ def main(cfg : OmegaConf) -> None:
         example_data = next(dataloader.iterate())
         sim_func, sim_params, next_rng_keys = init_simulator(master_key, cfg, example_data)
 
-        function_registry = {
-            "simulate" : sim_func
-        }
 
         n_parameters = 0
         flat_params, tree_def = tree_util.tree_flatten(sim_params)
@@ -203,12 +201,21 @@ def main(cfg : OmegaConf) -> None:
 
         optimizer, opt_state = build_optimizer(cfg, sim_params)
 
-        function_registry['optimizer'] = optimizer
+        global_step = 0
+
+        # Create a train state:
+        state = train_state.TrainState(
+            step      = global_step,
+            apply_fn  = sim_func,
+            params    = sim_params,
+            tx        = optimizer,
+            opt_state = opt_state,
+        )
 
         #     # self.trainer = self.build_trainer(batch, self.simulator_fn, self.simulator_params)
 
 
-        train_step = close_over_training_step(function_registry, cfg, MPI_AVAILABLE)
+        train_step = close_over_training_step(cfg, MPI_AVAILABLE)
 
 
         # Create a summary writer:
@@ -219,20 +226,14 @@ def main(cfg : OmegaConf) -> None:
 
         # Restore the weights
 
-        try:
-            r_sim_params, r_opt, r_global_step = restore_weights()
-            # Catch the nothing returned case:
-            assert r_global_step is not None
-            assert r_sim_params    is not None
-            assert r_opt         is not None
-            sim_params  = r_sim_params
-            opt_state   = r_opt
-            global_step = r_global_step
+
+        r_state = restore_weights(state)
+
+        if r_state is not None:
+            state  = r_state
             logger.info("Loaded weights, optimizer and global step!")
-        except Exception as excep:
+        else:
             logger.info("Failed to load weights!")
-            logger.info(excep)
-            pass
 
 
 
@@ -242,7 +243,7 @@ def main(cfg : OmegaConf) -> None:
             token = None
 
             # First, flatten the parameter trees:
-            sim_params_flat, treedef = jax.tree_util.tree_flatten(sim_params)
+            sim_params_flat, treedef = jax.tree_util.tree_flatten(state.params)
 
             # need to unfreeze to do this:
             for i, param in enumerate(sim_params_flat):
@@ -253,10 +254,10 @@ def main(cfg : OmegaConf) -> None:
                     token = token
                 )
             # And re-tree it:
-            sim_params = jax.tree_util.tree_unflatten(tree_def, sim_params_flat)
+            state.params = jax.tree_util.tree_unflatten(tree_def, sim_params_flat)
 
             # Now do the optimizer the same way:
-            opt_state_flat, opt_treedef = jax.tree_util.tree_flatten(opt_state)
+            opt_state_flat, opt_treedef = jax.tree_util.tree_flatten(state.opt_state)
 
             # need to unfreeze to do this:
             for i, param in enumerate(opt_state_flat):
@@ -267,11 +268,11 @@ def main(cfg : OmegaConf) -> None:
                     token = token
                 )
             # And re-tree it:
-            opt_state = jax.tree_util.tree_unflatten(opt_treedef, opt_state_flat)
+            state.opt_state = jax.tree_util.tree_unflatten(opt_treedef, opt_state_flat)
 
 
             # And the global step:
-            global_step, token = mpi4jax.bcast(global_step,
+            state.step, token = mpi4jax.bcast(state.step,
                             root = 0,
                             comm = MPI.COMM_WORLD,
                             token = token)
@@ -280,11 +281,11 @@ def main(cfg : OmegaConf) -> None:
         dl_iterable = dataloader.iterate()
         comp_data = next(dl_iterable)
 
-        print("comp_data['S2Pmt'].shape: ", comp_data['S2Pmt'].shape, flush=True)
+        # print("comp_data['S2Pmt'].shape: ", comp_data['S2Pmt'].shape, flush=True)
 
         prefactor = {
-                "S2Pmt" : 1.e-2,
-                "S2Si"  : 1.e1
+                "S2Pmt" : 1.,
+                "S2Si"  : 1.
             }
 
         # for key in comp_data.keys():
@@ -293,10 +294,9 @@ def main(cfg : OmegaConf) -> None:
 
         batch = comp_data
 
-        global_step = 0
         end = None
 
-        while global_step < cfg.run.iterations:
+        while state.step < cfg.run.iterations:
 
             if not active: break
 
@@ -317,9 +317,8 @@ def main(cfg : OmegaConf) -> None:
             # Split the keys:
             next_rng_keys = batch_update_rng_keys(next_rng_keys)
 
-            sim_params, opt_state, loss, train_metrics = train_step(
-                sim_params,
-                opt_state,
+            state, loss, train_metrics = train_step(
+                state,
                 batch,
                 next_rng_keys)
 
@@ -337,7 +336,7 @@ def main(cfg : OmegaConf) -> None:
             if cfg.run.profile:
                 if should_do_io(MPI_AVAILABLE, rank):
                     x.block_until_ready()
-                    jax.profiler.save_device_memory_profile(str(cfg.save_path) + f"memory{global_step}.prof")
+                    jax.profiler.save_device_memory_profile(str(cfg.save_path) + f"memory{state.step}.prof")
 
 
 
@@ -345,12 +344,12 @@ def main(cfg : OmegaConf) -> None:
 
 
             # Add comparison plots every N iterations
-            if global_step % cfg.run.image_iteration == 0:
+            if state.step % cfg.run.image_iteration == 0:
                 # print(sim_params)
                 if should_do_io(MPI_AVAILABLE, rank):
-                    save_dir = cfg.save_path / pathlib.Path(f'comp/{global_step}/')
+                    save_dir = cfg.save_path / pathlib.Path(f'comp/{state.step}/')
 
-                    simulated_data = function_registry["simulate"](
+                    simulated_data = state.apply_fn(
                         sim_params,
                         comp_data['energy_deposits'],
                         rngs=next_rng_keys
@@ -368,9 +367,9 @@ def main(cfg : OmegaConf) -> None:
 
 
 
-            if global_step % cfg.run.checkpoint  == 0:
+            if state.step % cfg.run.checkpoint  == 0:
                 if should_do_io(MPI_AVAILABLE, rank):
-                    save_weights(sim_params, opt_state, global_step)
+                    save_weights(state)
 
             if cfg.run.profile:
                 if should_do_io(MPI_AVAILABLE, rank):
@@ -382,19 +381,19 @@ def main(cfg : OmegaConf) -> None:
             metrics['img_per_sec'] = size * cfg.run.minibatch_size / metrics['time']
 
             if should_do_io(MPI_AVAILABLE, rank):
-                summary(writer, metrics, global_step)
+                summary(writer, metrics, state.step)
 
             # Iterate:
-            global_step += 1
+            # state.step += 1
 
-            if global_step % 1 == 0:
-                logger.info(f"step = {global_step}, loss = {metrics['loss']:.3f}")
+            if state.step % 1 == 0:
+                logger.info(f"step = {state.step}, loss = {metrics['loss']:.3f}")
                 logger.info(f"time = {metrics['time']:.3f} ({metrics['io_time']:.3f} io) - {metrics['img_per_sec']:.3f} Img/s")
 
     # Save the weights at the very end:
     if should_do_io(MPI_AVAILABLE, rank):
         try:
-            save_weights(sim_params, opt_state, global_step)
+            save_weights(state)
         except:
             pass
 

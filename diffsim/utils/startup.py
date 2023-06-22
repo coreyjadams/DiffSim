@@ -22,7 +22,6 @@ def set_compute_parameters(local_rank):
     else:
         target_device = jax.devices("cpu")[0]
     # Not a pure function by any means ...
-    # from jax.config import config; config.update("jax_enable_x64", True)
     # config.update('jax_disable_jit', True)
 
     return target_device

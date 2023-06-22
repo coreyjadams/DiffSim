@@ -12,13 +12,16 @@ class ModeKind(Enum):
     analysis  = 3
 
 class OptimizerKind(Enum):
-    rmsprop = 0
-    adam    = 1
+    rmsprop  = 0
+    adam     = 1
+    lamb     = 3
+    novograd = 4
 
 class Loss(Enum):
     MSE = 0
     MAE = 1
     ED  = 2
+
 
 @dataclass
 class Mode:
@@ -31,10 +34,12 @@ class Train(Mode):
     checkpoint_iteration:   int           = 500
     summary_iteration:      int           = 1
     logging_iteration:      int           = 1
-    optimizer:              OptimizerKind = OptimizerKind.rmsprop
+    optimizer:              OptimizerKind = OptimizerKind.novograd
     loss_power:             float         = 1.0
     name:                   ModeKind      = ModeKind.train
-    learning_rate:          float         = 0.01
+    learning_rate:          float         = 0.001
+    s2si_scaling:           float         = 10.
+    weight_decay:           float         = 5e-3
 
 @dataclass
 class Inference(Mode):

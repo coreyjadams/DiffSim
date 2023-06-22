@@ -18,13 +18,14 @@ class GSensorResponse(nn.Module):
     The output is the amount of light produced convolved with a gaussian into the sensor locations.
 
     So, the final axis will be the same shape as the sensor locations.
-    
+
     """
     active:           bool
     sensor_simulator: MLP
     waveform_ticks:   int
     bin_sigma:        float
     sensor_locations: numpy.ndarray
+
 
     # Functions to build waveforms based on weights and responses:
     @partial(vmap, in_axes=[None, 0,0,0,0])
@@ -54,7 +55,7 @@ class GSensorResponse(nn.Module):
 
         # Run the subtracted values through a gaussian response:
         sipm_spread_response = numpy.exp(-0.5*(r_squared/(el_spread)**2) ) / (el_spread * 2.5066)
- 
+
 
         sensor_response = sipm_spread_response * sensor_response.reshape((-1,1,1))
 
@@ -96,7 +97,7 @@ class GSensorResponse(nn.Module):
             response_of_sensors = self.sensor_simulator(simulator_input)
             # The exp forces it to be positive and gives a broad dynamic range:
             response_of_sensors = numpy.exp(response_of_sensors)
-            
+
             waveforms = self.build_waveforms(
                 response_of_sensors, simulator_input, z_positions, mask)
 
@@ -110,7 +111,7 @@ class GSensorResponse(nn.Module):
                 sensor_shape
             )
             waveform_scale = waveform_scale_v.value
-            waveforms = waveforms * waveform_scale.reshape(sensor_shape + (-1,))
+            waveforms = waveforms * (1. + waveform_scale.reshape(sensor_shape + (-1,)))
 
             return waveforms
         else:
@@ -131,7 +132,7 @@ def init_gsensor_response(sensor_cfg):
 
     sr = GSensorResponse(
         active           = sensor_cfg.active,
-        sensor_simulator = mlp, 
+        sensor_simulator = mlp,
         waveform_ticks   = sensor_cfg.waveform_ticks,
         bin_sigma        = sensor_cfg.bin_sigma,
         sensor_locations = sipm_locations,

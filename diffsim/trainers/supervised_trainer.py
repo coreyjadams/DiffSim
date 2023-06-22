@@ -8,6 +8,8 @@ from jax import jit, vmap
 
 from ..simulator.utils import batch_update_rng_keys
 
+from diffsim.utils import allreduce_dict
+
 import logging
 from logging import handlers
 
@@ -19,7 +21,7 @@ import pathlib
 from matplotlib import pyplot as plt
 
 
-def close_over_training_step(function_registry, config, MPI_AVAILABLE):
+def close_over_training_step(config, MPI_AVAILABLE):
 
     @jit
     def compute_loss(simulated_signals, real_signals):
@@ -29,34 +31,44 @@ def close_over_training_step(function_registry, config, MPI_AVAILABLE):
         '''
         power = config.mode.loss_power
 
-        # First, we compute the difference squared in the two:
+        # First, we compute the difference in the two signals w/ abs value:
         difference = numpy.abs(simulated_signals - real_signals)**power
+        # The power is sort of like a focal term.
 
-        # Because this data is so sparse, we multiply the difference
-        # by the input data to push the loss up in important places and
-        # down in unimportant places.  But, don't want the loss to be zero
-        # where the wavefunction is zero, so put a floor:
-        mask = real_signals > 0.1
-        # Cast it to floating point:
-        mask = mask.astype("float32")
-        # Here's the floor:
-        weight = 1e-4*numpy.ones(difference.shape)
-        # Amplify the non-zero regions
-        weight = weight + mask
+        # Next compute the log of this difference, with a baseline term to prevent
+        # it from going negative:
+        # Why compute the log?  Because the loss is SO HIGH at the start
+        # Adding 1.0 contributes nothing to the loss when the signals are equal.
+        loss = numpy.log(difference + 1.)
 
-        difference = difference * weight
+        # Optionally, may increase a with a focal term:
+
+        # # Because this data is so sparse, we multiply the difference
+        # # by the input data to push the loss up in important places and
+        # # down in unimportant places.  But, don't want the loss to be zero
+        # # where the wavefunction is zero, so put a floor:
+        # mask = real_signals > 0.1
+        # # Cast it to floating point:
+        # mask = mask.astype("float32")
+        # # Here's the floor:
+        # weight = 1e-4*numpy.ones(difference.shape)
+        # # Amplify the non-zero regions
+        # weight = weight + mask #(so the loss is either 1e-4 or 1.0001)
+        #
+        # difference = difference * weight
 
 
         # Take the sum of the difference over the last axis, the waveform:
-        difference = numpy.sum(difference, axis=-1)
+        loss = numpy.sum(loss, axis=-1)
+        # loss = numpy.sum(loss, axis=-1) / numpy.sum(weight)
 
-        # Take the mean of the difference over the sensor arrays:
-        difference = difference.mean()
+        # Take the mean of the loss over the sensor arrays:
+        loss = loss.mean()
 
-        # We weigh the difference by the integral of the signal too:
+        # We weigh the loss by the integral of the signal too:
 
         # And, return the loss as a scalar:
-        return difference
+        return loss
 
     @jit
     def compute_residual(simulated_signals, real_signals):
@@ -69,47 +81,57 @@ def close_over_training_step(function_registry, config, MPI_AVAILABLE):
         return numpy.mean(residual)
 
     @jit
-    def forward(params, batch, rng_seeds):
-        simulated_waveforms = function_registry["simulate"](
-                params, 
-                batch['energy_deposits'], 
-                rngs=rng_seeds
+    def train_one_step(state, batch, rng_seeds):
+
+
+        def loss_fn(params):
+            simulated_waveforms = state.apply_fn(
+                    state.params,
+                    batch['energy_deposits'],
+                    rngs=rng_seeds
+                )
+
+            # Compute the loss, mean over the batch:
+            loss = {
+                key : vmap(compute_loss, in_axes=(0,0))(
+                    simulated_waveforms[key],
+                    batch[key]).mean()
+                for key in ["S2Si", "S2Pmt"]
+            }
+
+            # Compute the residual which is an unweight, unnormalized comparison:
+            metrics = {
+                "residual/" + key : vmap(compute_residual, in_axes=(0,0))(simulated_waveforms[key], batch[key]).mean()
+                for key in ["S2Si", "S2Pmt"]
+            }
+
+            metrics.update(
+                { "loss/" + key : loss[key] for key in loss.keys() }
             )
-        
-        # Compute the loss, mean over the batch:
-        loss = {
-            key : vmap(compute_loss, in_axes=(0,0))(
-                simulated_waveforms[key], 
-                batch[key]).mean()
-            for key in ["S2Si", "S2Pmt"]
-        }
 
 
-        residual = {
-            "residual/" + key : vmap(compute_residual, in_axes=(0,0))(simulated_waveforms[key], batch[key]).mean()
-            for key in ["S2Si", "S2Pmt"]
-        }
+            loss = 0.01* loss["S2Pmt"] + config.mode.s2si_scaling * loss["S2Si"]
 
-        residual.update(
-            { "loss/" + key : loss[key] for key in loss.keys() }
-        )
+            return loss, metrics
 
-        # loss = loss["S2Pmt"]
-        loss = loss["S2Pmt"] + loss["S2Si"]
+        grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
 
-        return loss, residual
+        (loss, metrics), grads = grad_fn(state.params)
 
-    @jit
-    def train_one_step(sim_params, opt_state, batch, rng_seeds):
 
-        (loss_value, metrics), grads = jax.value_and_grad(forward, argnums=0, has_aux=True)(
-            sim_params, batch, rng_seeds)
+        if MPI_AVAILABLE:
+            # Intercept here and allreduce the dict if necessary:
+            grads = allreduce_dict(grads)
 
-        updates, opt_state = function_registry["optimizer"].update(grads, opt_state, sim_params)
+        # Apply the gradients with the optimizer:
+        state = state.apply_gradients(grads=grads)
 
-        sim_params = optax.apply_updates(sim_params, updates)
+        # (loss_value, metrics), grads = jax.value_and_grad(forward, argnums=0, has_aux=True)(
+        #     state, batch, rng_seeds)
 
-        return sim_params, opt_state, loss_value, metrics
+
+
+        return state, loss, metrics
 
     return train_one_step
 

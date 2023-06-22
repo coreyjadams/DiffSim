@@ -3,61 +3,43 @@ import pathlib
 
 import jax.numpy as numpy
 
-from flax.training import train_state, checkpoints
+from flax.training import checkpoints
 
-# import orbax 
+import orbax.checkpoint
+from flax.training import orbax_utils
+from flax.core import frozen_dict
 
-def save_weights(save_path, model_name, parameters, opt_state, global_step, name = "checkpoint" ):
+def init_checkpointer(save_path):
 
-    # If the file for the model path already exists, we don't change it until after restoring:
-    model_path = save_path / pathlib.Path(name) / pathlib.Path("model")
-    opt_path   = save_path / pathlib.Path(name) / pathlib.Path("opt")
+    ckpt_path = save_path / pathlib.Path("checkpoint") / pathlib.Path("model")
+    checkpointer = orbax.checkpoint.PyTreeCheckpointer()
 
-    # checkpointer = orbax.checkpoint.PyTreeCheckpointer()
-    # checkpointer.save(
-    #     directory = model_path, 
-    #     item      = parameters)
+    options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=5, create=True)
+    checkpoint_manager = orbax.checkpoint.CheckpointManager(
+        ckpt_path,
+        checkpointer,
+        options
+    )
 
-    # Take the network and snapshot it to file:
-    checkpoints.save_checkpoint(
-        ckpt_dir = model_path,
-        target   = parameters,
-        step     = global_step,
-        prefix   = model_name,
-        keep     = 5)
+    def save_weights(train_state):
 
-    checkpoints.save_checkpoint(
-        ckpt_dir = opt_path,
-        target   = opt_state,
-        step     = global_step,
-        prefix   = model_name,
-        keep     = 5)
+        save_args = orbax_utils.save_args_from_target(train_state)
 
-def restore_weights(save_path, model_name, name = "checkpoint"):
+        checkpoint_manager.save(train_state.step, train_state, save_kwargs={'save_args' : save_args})
 
-    # If the file for the model path already exists, we don't change it until after restoring:
-    model_path = save_path / pathlib.Path(name) / pathlib.Path("model")
-    opt_path   = save_path / pathlib.Path(name) / pathlib.Path("opt")
+        return
 
-    # Get the latest checkpoint path:
-    latest = checkpoints.latest_checkpoint(model_path, prefix=model_name)
 
-    if latest is None:
-        return None, None, None
+    def restore_weights(target):
 
-    global_step =  int(os.path.basename(latest).replace(str(model_name), ""))
+        global_step = checkpoint_manager.latest_step()
+        if global_step is None: return None
 
-    # Take the network and snapshot it to file:
-    restored_model = checkpoints.restore_checkpoint(
-        ckpt_dir = model_path,
-        target   = None,
-        prefix   = model_name)
 
-    restored_opt = checkpoints.restore_checkpoint(
-        ckpt_dir = opt_path,
-        target   = None,
-        prefix   = model_name)
+        checkpoint = checkpoint_manager.restore(global_step, items=target)
 
-    print(restored_opt)
 
-    return restored_model, restored_opt, global_step
+        return checkpoint
+
+
+    return save_weights, restore_weights

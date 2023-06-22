@@ -16,7 +16,7 @@ class NNSensorResponse(nn.Module):
     The MLP's final layer should be the number of sensors desired.
 
     """
-    active:           bool 
+    active:           bool
     el_light_prob:    MLP # NN that simulates the probability of light from EL position hitting sensor
     el_light_amp:     MLP # NN that simulates the amount of light from EL position overall
     waveform_ticks:   int
@@ -57,7 +57,13 @@ class NNSensorResponse(nn.Module):
         if self.active:
             # Put this through sigmoid to map from 0 to 1:
             sensor_probs = nn.sigmoid(self.el_light_prob(simulator_input))
-            # Put this into exp to ensure >=0 and increase dynamic range:
+            # Put this into exp to ensure >=0 and increase dynamic range.
+
+            # We compute the log of the light response amplitude from the NN
+            # Further, the assumption is that the amount of light hitting a sensor
+            # Is approximately constant.  So we predict the constant + a position-
+            # dependant correction
+
             sensor_amp   = numpy.exp(self.el_light_amp(simulator_input) )
 
             response_of_sensors = sensor_amp * sensor_probs

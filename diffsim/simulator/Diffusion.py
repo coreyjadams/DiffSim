@@ -31,7 +31,7 @@ class Diffusion(nn.Module):
         is_initialized = self.has_variable("diffusion", "diffusion")
         diffusion_v = self.variable(
                 "diffusion", "diffusion",
-                lambda s : 0.1*numpy.ones(s, dtype=electrons.dtype),
+                lambda s : 1.0*numpy.ones(s, dtype=electrons.dtype),
                 electrons[0].shape
             )
         # This actually fetches the value:
