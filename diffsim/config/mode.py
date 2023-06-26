@@ -38,6 +38,7 @@ class Train(Mode):
     loss_power:             float         = 1.0
     name:                   ModeKind      = ModeKind.train
     learning_rate:          float         = 0.001
+    s2pmt_scaling:          float         = 0.0
     s2si_scaling:           float         = 10.
     weight_decay:           float         = 5e-3
 

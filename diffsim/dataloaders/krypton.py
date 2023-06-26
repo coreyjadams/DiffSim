@@ -5,7 +5,7 @@ import numpy
 import glob
 
 # from multiprocessing import Pool
-
+from concurrent import futures
 
 
 # For krypton, the detector parameters are supposed to be:
@@ -18,13 +18,13 @@ import glob
 class krypton:
 
     def __init__(self, path, run, MPI_AVAILABLE,
-        batch_size=32, 
+        batch_size=32,
         max_energy_depositions=2, db = None):
 
         self.MPI_AVAILABLE = MPI_AVAILABLE
 
         self.batch_size = batch_size
-        self.path = pathlib.Path(path)
+        self.path = pathlib.Path(path + f"/{run}/")
         self.run  = run
 
         self.n_pmts         = 12
@@ -34,6 +34,15 @@ class krypton:
         self.s1_pmt_shape = [self.n_pmts, self.readout_length]
         self.s2_pmt_shape = [self.n_pmts, self.readout_length]
         self.s2_si_shape = [47, 47, self.readout_length]
+
+        # This is to pipeline IO and preload data
+        self.executor = futures.ThreadPoolExecutor()
+        # This keeps track of all open events:
+        self.future_pool = []
+        # A place to store completed futures:
+        self.completed_futures = []
+        # A limit for how many futures to have open at once:
+        self.max_preload_batches = 2
 
         if db is None:
             raise Exception("Must provide a DB")
@@ -61,6 +70,9 @@ class krypton:
         # - all the S2Pmt signals      - DONE
         # - all the S2Sipm signals     - DONE
 
+        # Here's the logic:
+        # At start up, preload many futures to start reading IO.
+
         self.active = True
 
 
@@ -74,6 +86,8 @@ class krypton:
         # Loop over the files and pull events until the batch is full
         batch_index = 0
 
+        futures_queue = []
+
         for pmap_file, kdst_file in self.file_list():
 
             for event, pmaps in self.event_reader_tables(pmap_file, kdst_file):
@@ -82,6 +96,7 @@ class krypton:
                     print("Stopping iterations")
                     raise StopIteration()
 
+                
                 this_output_data = self.build_output_data(
                     event,
                     pmaps,
@@ -98,6 +113,7 @@ class krypton:
 
                 # output_data['S2Si'][batch_index][:]
                 batch_index += 1
+
                 if batch_index == self.batch_size:
                     output_data = {}
                     output_data['energy_deposits'] =  numpy.stack(output_data_stack['energy_deposits'])
@@ -155,8 +171,8 @@ class krypton:
 
 
 
-        kdst_path = self.path / "kdst"  / "trigger1"
-        pmap_path = self.path / "pmaps" / "trigger1"
+        kdst_path = self.path / "kdst"
+        pmap_path = self.path / "pmaps"
 
 
         pmap_format = "pmaps_{index:04}_{run}_trigger1_v1.2.0_20191122_krbg1600.h5"

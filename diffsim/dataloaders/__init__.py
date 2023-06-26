@@ -1,6 +1,10 @@
 from . krypton import krypton
 
-def build_dataloader(config):
+from . preloader import DataPreloader
+
+from . krypton_threaded import KryptonLoader, KryptonReader
+
+def build_dataloader(config, MPI_AVAILABLE):
     import pandas as pd
     # Load the sipm database:
     sipm_db = pd.read_pickle("database/new_sipm.pkl")
@@ -13,4 +17,23 @@ def build_dataloader(config):
         MPI_AVAILABLE=False,
         )
 
+
+    # k = KryptonLoader(
+    #     MPI_AVAILABLE  = MPI_AVAILABLE,
+    #     reader_class   = KryptonReader,
+    #     path           = config.data.path,
+    #     run            = config.data.run,
+    # )
+    #
+    # # Get the next file reader:
+    # k.preload_dataset()
+    #
+    # dl = DataPreloader(
+    #     batch_size    = config.run.minibatch_size,
+    #     MPI_AVAILABLE = MPI_AVAILABLE,
+    #     file_loader   = k
+    # )
+    #
+    #
+    #
     return dl

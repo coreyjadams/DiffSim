@@ -78,14 +78,14 @@ def interupt_handler( sig, frame):
     active = False
 
 @jit
-def update_summary_params(metrics, sim_params):
+def update_summary_params(metrics, params):
 
     # Add the diffusion:
-    metrics["physics/diffusion_0"] = sim_params["diffusion"]["diff"]["diffusion"][0]
-    metrics["physics/diffusion_1"] = sim_params["diffusion"]["diff"]["diffusion"][1]
-    metrics["physics/diffusion_2"] = sim_params["diffusion"]["diff"]["diffusion"][2]
-    metrics["physics/el_spread"]   = sim_params["el_spread"]["sipm_s2"]["el_spread"][0]
-    metrics["physics/lifetime"]    = sim_params["lifetime"]["lifetime"]["lifetime"][0]
+    metrics["physics/diffusion_0"] = params["diffusion"]["diff"]["diffusion"][0]
+    metrics["physics/diffusion_1"] = params["diffusion"]["diff"]["diffusion"][1]
+    metrics["physics/diffusion_2"] = params["diffusion"]["diff"]["diffusion"][2]
+    # metrics["physics/el_spread"]   = params["el_spread"]["sipm_s2"]["el_spread"][0]
+    metrics["physics/lifetime"]    = params["lifetime"]["lifetime"]["lifetime"][0]
 
     return metrics
 
@@ -156,7 +156,7 @@ def main(cfg : OmegaConf) -> None:
 
 
     # Always construct a dataloader:
-    dataloader  = build_dataloader(cfg)
+    dataloader  = build_dataloader(cfg, MPI_AVAILABLE)
 
 
     # If it's just IO testing, run that here then exit:
@@ -332,7 +332,7 @@ def main(cfg : OmegaConf) -> None:
 
             metrics.update(train_metrics)
             # Add to the metrics the physical parameters:
-            metrics = update_summary_params(metrics, sim_params)
+            metrics = update_summary_params(metrics, state.params)
             if cfg.run.profile:
                 if should_do_io(MPI_AVAILABLE, rank):
                     x.block_until_ready()
@@ -350,7 +350,7 @@ def main(cfg : OmegaConf) -> None:
                     save_dir = cfg.save_path / pathlib.Path(f'comp/{state.step}/')
 
                     simulated_data = state.apply_fn(
-                        sim_params,
+                        state.params,
                         comp_data['energy_deposits'],
                         rngs=next_rng_keys
                     )

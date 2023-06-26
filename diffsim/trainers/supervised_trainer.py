@@ -21,6 +21,7 @@ import pathlib
 from matplotlib import pyplot as plt
 
 
+# def close_over_training_step(config, MPI_AVAILABLE, sim_func, optimizer):
 def close_over_training_step(config, MPI_AVAILABLE):
 
     @jit
@@ -86,7 +87,7 @@ def close_over_training_step(config, MPI_AVAILABLE):
 
         def loss_fn(params):
             simulated_waveforms = state.apply_fn(
-                    state.params,
+                    params,
                     batch['energy_deposits'],
                     rngs=rng_seeds
                 )
@@ -109,10 +110,13 @@ def close_over_training_step(config, MPI_AVAILABLE):
                 { "loss/" + key : loss[key] for key in loss.keys() }
             )
 
-
-            loss = 0.01* loss["S2Pmt"] + config.mode.s2si_scaling * loss["S2Si"]
+            loss =  loss["S2Pmt"]
+            # loss =  loss["S2Si"]
+            # loss = config.mode.s2pmt_scaling * loss["S2Pmt"] + config.mode.s2si_scaling * loss["S2Si"]
 
             return loss, metrics
+
+        # print(state.apply_fn)
 
         grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
 
