@@ -65,7 +65,8 @@ class GSensorResponse(nn.Module):
         stops  = numpy.ones(shape=(n_electrons)) * (self.waveform_ticks -1) # + 0.5
 
         exp_input = numpy.linspace(start=starts, stop=stops, num=self.waveform_ticks, axis=-1)
-        exp_values = numpy.exp( - (exp_input - z_positions)**2.  / (2. * self.bin_sigma))
+        # I don't know why - the sipm data is shifted in Z compared to pmt
+        exp_values = numpy.exp( - (exp_input - z_positions + 1)**2.  / (2. * self.bin_sigma))
 
         # Normalize the values:
         exp_values = exp_values.transpose() * (0.39894228040/numpy.sqrt(self.bin_sigma))

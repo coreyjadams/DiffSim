@@ -7,8 +7,8 @@ from . ElectronGenerator import ElectronGenerator, init_electron_generator
 from . Diffusion         import Diffusion,         init_diffusion
 from . Lifetime          import Lifetime,          init_lifetime
 from . NNSensorResponse  import NNSensorResponse,  init_nnsensor_response
-from . SipmResponse   import SipmSensorResponse,   init_sipm_sensor_response
-# from . GSensorResponse   import GSensorResponse,   init_gsensor_response
+# from . SipmResponse   import SipmSensorResponse,   init_sipm_sensor_response
+from . GSensorResponse   import GSensorResponse,   init_gsensor_response
 
 class NEW_Simulator(nn.Module):
 
@@ -16,7 +16,7 @@ class NEW_Simulator(nn.Module):
     diff:     Diffusion
     lifetime: Lifetime
     pmt_s2:   NNSensorResponse
-    sipm_s2:  SipmSensorResponse
+    sipm_s2:  GSensorResponse
 
     @nn.compact
     def __call__(self, energies_and_positions):
@@ -66,7 +66,8 @@ def init_NEW_simulator(NEW_Physics):
 
 
     pmt_s2, _ = init_nnsensor_response(NEW_Physics.pmt_s2)
-    sipm_s2, _ = init_sipm_sensor_response(NEW_Physics.sipm_s2)
+    # sipm_s2, _ = init_sipm_sensor_response(NEW_Physics.sipm_s2)
+    sipm_s2, _ = init_gsensor_response(NEW_Physics.sipm_s2)
 
     simulator = NEW_Simulator(
         eg       = eg,

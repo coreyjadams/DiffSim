@@ -62,7 +62,7 @@ class GSensorResponse:
 class NEW_Simulator(Simulator):
     detector:            str = "NEW"
     pmt_s2: NNSensorResponse = field(default_factory = lambda : NNSensorResponse())
-    sipm_s2: SipmSensorResponse = field(default_factory = lambda : SipmSensorResponse())
+    sipm_s2: GSensorResponse = field(default_factory = lambda : GSensorResponse())
 
 cs = ConfigStore.instance()
 cs.store(group="physics", name="NEW", node=NEW_Simulator)

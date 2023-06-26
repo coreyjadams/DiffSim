@@ -254,7 +254,8 @@ def main(cfg : OmegaConf) -> None:
                     token = token
                 )
             # And re-tree it:
-            state.params = jax.tree_util.tree_unflatten(tree_def, sim_params_flat)
+            bcast_params = jax.tree_util.tree_unflatten(tree_def, sim_params_flat)
+
 
             # Now do the optimizer the same way:
             opt_state_flat, opt_treedef = jax.tree_util.tree_flatten(state.opt_state)
@@ -268,15 +269,25 @@ def main(cfg : OmegaConf) -> None:
                     token = token
                 )
             # And re-tree it:
-            state.opt_state = jax.tree_util.tree_unflatten(opt_treedef, opt_state_flat)
+            bcast_opt_state = jax.tree_util.tree_unflatten(opt_treedef, opt_state_flat)
 
 
             # And the global step:
-            state.step, token = mpi4jax.bcast(state.step,
+            bcast_step, token = mpi4jax.bcast(state.step,
                             root = 0,
                             comm = MPI.COMM_WORLD,
                             token = token)
             logger.info("Done broadcasting initial model and optimizer state.")
+
+            # Finally, create an updated state:
+            state = train_state.TrainState(
+                step      = bcast_step,
+                apply_fn  = sim_func,
+                params    = bcast_params,
+                tx        = optimizer,
+                opt_state = bcast_opt_state,
+            )
+
 
         dl_iterable = dataloader.iterate()
         comp_data = next(dl_iterable)

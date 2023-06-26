@@ -110,9 +110,9 @@ def close_over_training_step(config, MPI_AVAILABLE):
                 { "loss/" + key : loss[key] for key in loss.keys() }
             )
 
-            loss =  loss["S2Pmt"]
+            # loss =  loss["S2Pmt"]
             # loss =  loss["S2Si"]
-            # loss = config.mode.s2pmt_scaling * loss["S2Pmt"] + config.mode.s2si_scaling * loss["S2Si"]
+            loss = config.mode.s2pmt_scaling * loss["S2Pmt"] + config.mode.s2si_scaling * loss["S2Si"]
 
             return loss, metrics
 
