@@ -66,7 +66,7 @@ class GSensorResponse(nn.Module):
 
         exp_input = numpy.linspace(start=starts, stop=stops, num=self.waveform_ticks, axis=-1)
         # I don't know why - the sipm data is shifted in Z compared to pmt
-        exp_values = numpy.exp( - (exp_input - z_positions + 1)**2.  / (2. * self.bin_sigma))
+        exp_values = numpy.exp( - (exp_input - z_positions )**2.  / (2. * self.bin_sigma))
 
         # Normalize the values:
         exp_values = exp_values.transpose() * (0.39894228040/numpy.sqrt(self.bin_sigma))
@@ -118,7 +118,7 @@ class GSensorResponse(nn.Module):
 def init_gsensor_response(sensor_cfg):
 
     mlp_config = sensor_cfg.mlp_cfg
-    mlp, _ = init_mlp(mlp_config, nn.sigmoid)
+    mlp, _ = init_mlp(mlp_config, nn.relu)
 
     # The sipm locations:
     sipms_1D = numpy.arange(-235, 235, 10.) + 5

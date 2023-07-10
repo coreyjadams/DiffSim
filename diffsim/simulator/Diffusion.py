@@ -6,6 +6,8 @@ from dataclasses import dataclass
 import flax.linen as nn
 
 from functools import partial
+from .MLP import MLP, init_mlp
+
 
 class Diffusion(nn.Module):
     """
@@ -16,16 +18,28 @@ class Diffusion(nn.Module):
 
     """
 
+    drift_velocity: MLP
+
+
     @partial(vmap, in_axes=[None, 0,0])
     def diffuse_electrons(self, electrons, kicks):
         '''
         Apply diffusion to a single energy deposition (shape of [N, 3])
         '''
 
+
         # Diffusion is proportional to the sqrt of Z:
         z = electrons[:,3]
-        # Need to reshape it to have the x/y/z dimension for broadcasting
+        # The absolute scale of diffusion depends on the Z location:
         scale = numpy.sqrt(z).reshape((-1,1))
+
+        # Assuming the drift velocity might not be constant over the whole range:
+        drift_velocity_correction = self.drift_velocity(z.reshape(-1,1)).reshape(z.shape)
+
+        # Apply it as a "residual" type correction of max size ~25%
+        z = (1+ 0.05*drift_velocity_correction)*z
+
+        # Need to reshape it to have the x/y/z dimension for broadcasting
 
         # Get the diffusion variable:
         is_initialized = self.has_variable("diffusion", "diffusion")
@@ -37,7 +51,12 @@ class Diffusion(nn.Module):
         # This actually fetches the value:
         diffusion = diffusion_v.value
         # Apply it as a correction that is proportional to sqrt(z) but has a normal component too
-        return electrons + diffusion * kicks * scale
+        diffusion =  diffusion * kicks * scale
+
+        # Replace the z position with the scaled z by the drift V correction:
+        electrons = electrons.at[:,3].set(z)
+
+        return electrons + diffusion
 
     @nn.compact
     def __call__(self, electrons):
@@ -56,9 +75,11 @@ class Diffusion(nn.Module):
 
 
 
-def init_diffusion(diffusion_params=None):
+def init_diffusion(diffusion_params):
 
-    # Currently, this doesn't take parameters:
-    diff = Diffusion()
+    mlp_config = diffusion_params.mlp_cfg
+    mlp, _ = init_mlp(mlp_config, nn.sigmoid)
+
+    diff = Diffusion(mlp)
 
     return diff, ["diffusion",]

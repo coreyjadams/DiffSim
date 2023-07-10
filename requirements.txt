@@ -5,3 +5,6 @@ hydra-core
 tensorboard
 jax
 jaxlib
+matplotlib
+flax
+optax

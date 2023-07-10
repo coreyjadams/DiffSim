@@ -1,4 +1,8 @@
 import sys, os
+
+import multiprocessing as mp
+mp.set_start_method('spawn')
+
 from concurrent import futures
 
 from abc import ABC, abstractmethod
@@ -61,7 +65,8 @@ class FileReader(ABC):
             f.close()
         self.active_files = []
 
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+import logging
 
 import random
 class FileLoader(ABC):
@@ -107,14 +112,16 @@ class FileLoader(ABC):
         """
 
         futures = []
-
-        with ProcessPoolExecutor(max_workers=32) as executor:
+        logger = logging.getLogger()
+        logger.info(f"Preloading dataset - {len(self.file_list)} files to read per rank")
+        with ThreadPoolExecutor(max_workers=1) as executor:
             for files in self.file_list:
                 reader = self.reader_class(files, self.shuffle)
                 future = executor.submit(
                     reader.open
                 )
                 futures.append(future)
+        logger.info("Finished preloading dataset")
 
         self.readers = [ f.result() for f in futures]
         self.lengths = numpy.asarray([ len(r) for r in self.readers ])

@@ -25,7 +25,9 @@ class MLPConfig():
 #     aggregate_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers=[128,1]))
 #     active:              bool = True
 
-
+@dataclass
+class Diffusion:
+    mlp_cfg: MLPConfig = field(default_factory = lambda : MLPConfig(layers=[16,16,16,1]) )
 
 @dataclass
 class Simulator:
@@ -61,6 +63,7 @@ class GSensorResponse:
 @dataclass
 class NEW_Simulator(Simulator):
     detector:            str = "NEW"
+    diffusion:     Diffusion = field(default_factory = lambda : Diffusion())
     pmt_s2: NNSensorResponse = field(default_factory = lambda : NNSensorResponse())
     sipm_s2: GSensorResponse = field(default_factory = lambda : GSensorResponse())
 

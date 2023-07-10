@@ -7,4 +7,4 @@ model_name: model
 
 mode:
   optimizer: novograd
-  learning_rate: 0.01
+  learning_rate: 0.001

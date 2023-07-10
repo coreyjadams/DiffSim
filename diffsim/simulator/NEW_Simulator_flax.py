@@ -55,7 +55,7 @@ def init_NEW_simulator(NEW_Physics):
     if eg_rng_keys is not None:
         all_rng_keys += eg_rng_keys
 
-    diff, diff_rng_keys = init_diffusion()
+    diff, diff_rng_keys = init_diffusion(NEW_Physics.diffusion)
     if diff_rng_keys is not None:
         all_rng_keys += diff_rng_keys
 
@@ -71,7 +71,7 @@ def init_NEW_simulator(NEW_Physics):
 
     simulator = NEW_Simulator(
         eg       = eg,
-        diff     = Diffusion(),
+        diff     = diff,
         lifetime = Lifetime(),
         pmt_s2   = pmt_s2,
         sipm_s2  = sipm_s2,

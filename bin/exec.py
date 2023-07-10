@@ -118,12 +118,12 @@ def main(cfg : OmegaConf) -> None:
 
     model_name = pathlib.Path(cfg["model_name"])
 
-    # Here we initialize the checkpointer functions:
-    save_weights, restore_weights = init_checkpointer(work_dir)
-
-
     MPI_AVAILABLE, rank, size = init_mpi(cfg.run.distributed)
 
+
+    # Here we initialize the checkpointer functions:
+    if should_do_io(MPI_AVAILABLE, rank):
+        save_weights, restore_weights = init_checkpointer(work_dir)
 
 
     # Figure out the local rank if MPI is available:
@@ -226,14 +226,15 @@ def main(cfg : OmegaConf) -> None:
 
         # Restore the weights
 
+        if should_do_io(MPI_AVAILABLE, rank):
 
-        r_state = restore_weights(state)
+            r_state = restore_weights(state)
 
-        if r_state is not None:
-            state  = r_state
-            logger.info("Loaded weights, optimizer and global step!")
-        else:
-            logger.info("Failed to load weights!")
+            if r_state is not None:
+                state  = r_state
+                logger.info("Loaded weights, optimizer and global step!")
+            else:
+                logger.info("Failed to load weights!")
 
 
 
