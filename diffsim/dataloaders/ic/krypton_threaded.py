@@ -237,7 +237,7 @@ class KryptonReader(FileReader):
 
 class KryptonLoader(FileLoader):
 
-    def discover_files(self, path, run):
+    def discover_files(self, path, run, trigger=None):
         """
         The role of this function is just to find all the possible files, based on
         path and run.  It doesn't shuffle or coordinate, that is elsewhere
@@ -247,6 +247,10 @@ class KryptonLoader(FileLoader):
 
         kdst_path = pathlib.Path(path) / pathlib.Path(str(run)) / "kdst/"
         pmap_path = pathlib.Path(path) / pathlib.Path(str(run)) / "pmaps/"
+
+        if trigger is not None:
+            kdst_path /= f"trigger{trigger}/"
+            pmap_path /= f"trigger{trigger}/"
 
         kdst_prefix  = "kdst_"
         pmap_prefix  = "pmaps_"
@@ -263,7 +267,7 @@ class KryptonLoader(FileLoader):
         if n_files == 0:
             raise Exception(f"No files found at {glob_str}!")
 
-        # i = 0
+        i = 0
         for kdst_file in kdst_list:
 
             # Need to back out the index:
@@ -283,7 +287,8 @@ class KryptonLoader(FileLoader):
                     "pmap" : str(pmap_file),
                     "kdst" : kdst_file
                 })
-            # i += 1
-            # if i > 51: break
+
+            i += 1
+            if i > 51: break
 
         return file_list

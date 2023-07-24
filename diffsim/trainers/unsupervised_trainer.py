@@ -34,7 +34,6 @@ def close_over_training_step(config, MPI_AVAILABLE):
 
         # First, we compute the difference in the two signals w/ abs value:
         difference = numpy.abs(simulated_signals - real_signals)**power
-        print(difference)
         # The power is sort of like a focal term.
 
         # Next compute the log of this difference, with a baseline term to prevent
@@ -89,10 +88,9 @@ def close_over_training_step(config, MPI_AVAILABLE):
         def loss_fn(params):
             simulated_waveforms = state.apply_fn(
                     params,
-                    batch['e_deps'],
+                    batch['energy_deposits'],
                     rngs=rng_seeds
                 )
-            
 
             # Compute the loss, mean over the batch:
             loss = {

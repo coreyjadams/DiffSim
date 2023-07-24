@@ -41,6 +41,8 @@ class NNSensorResponse(nn.Module):
 
         exp_values = numpy.exp( - (exp_input - z_positions)**2.  / (2. * self.bin_sigma))
 
+
+
         # Scale by the weights:
         exp_values = exp_values * weights
 
