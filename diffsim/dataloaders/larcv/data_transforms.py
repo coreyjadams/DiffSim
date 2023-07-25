@@ -25,16 +25,12 @@ def larcv_edeps(input_array, meta):
     n_planes   = input_array.shape[1]
 
 
-    # print(meta.dtype)
-    # print(meta)
-    # print(meta['origin'][0])
-    # print(meta['origin'][0,0])
-    # print(input_array.shape)
+    voxel_size = meta['size'][0] / meta['n_voxels'][0]
 
     # Slice the data apart:
-    x_coords = 0.5*input_array[:,:,0] + meta['origin'][0,0]
-    y_coords = 0.5*input_array[:,:,1] + meta['origin'][0,1]
-    z_coords = 0.05*input_array[:,:,2] + meta['origin'][0,2]
+    x_coords = voxel_size[0] * input_array[:,:,0] + meta['origin'][0,0]
+    y_coords = voxel_size[1] * input_array[:,:,1] + meta['origin'][0,1]
+    z_coords = voxel_size[2] * input_array[:,:,2] + meta['origin'][0,2]
     val_coords = input_array[:,:,3]
 
 

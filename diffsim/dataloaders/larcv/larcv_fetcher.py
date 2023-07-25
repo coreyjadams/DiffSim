@@ -314,22 +314,22 @@ class larcv_dataset(object):
 
                     minibatch_data[key] = data_transforms.larcv_edeps(minibatch_data[key], generic_meta(20.))
 
-                    # print(minibatch_data[key].shape)
-                    # print(minibatch_data[key])
-                    print("X: ", numpy.min(minibatch_data[key][:,:,0]), numpy.max(minibatch_data[key][:,:,0]))
-                    print("Y: ", numpy.min(minibatch_data[key][:,:,1]), numpy.max(minibatch_data[key][:,:,1]))
-                    print("Z: ", numpy.min(minibatch_data[key][:,:,2]), numpy.max(minibatch_data[key][:,:,2]))
-                    print("E: ", numpy.min(minibatch_data[key][:,:,3]), numpy.max(minibatch_data[key][:,:,3]))
-                    # minibatch_data[key][:,:,0,] = minibatch_data[key][:,:,0] / 20 - 23.5
-                    # minibatch_data[key][:,:,1,] = minibatch_data[key][:,:,1] / 20 - 23.5
-                    # minibatch_data[key][:,:,3,] = minibatch_data[key][:,:,3] / 20.
+                    # # print(minibatch_data[key].shape)
+                    # # print(minibatch_data[key])
                     # print("X: ", numpy.min(minibatch_data[key][:,:,0]), numpy.max(minibatch_data[key][:,:,0]))
                     # print("Y: ", numpy.min(minibatch_data[key][:,:,1]), numpy.max(minibatch_data[key][:,:,1]))
                     # print("Z: ", numpy.min(minibatch_data[key][:,:,2]), numpy.max(minibatch_data[key][:,:,2]))
                     # print("E: ", numpy.min(minibatch_data[key][:,:,3]), numpy.max(minibatch_data[key][:,:,3]))
-                    exit()
-                    
-                    # print(minibatch_data[key])
+                    # # minibatch_data[key][:,:,0,] = minibatch_data[key][:,:,0] / 20 - 23.5
+                    # # minibatch_data[key][:,:,1,] = minibatch_data[key][:,:,1] / 20 - 23.5
+                    # # minibatch_data[key][:,:,3,] = minibatch_data[key][:,:,3] / 20.
+                    # # print("X: ", numpy.min(minibatch_data[key][:,:,0]), numpy.max(minibatch_data[key][:,:,0]))
+                    # # print("Y: ", numpy.min(minibatch_data[key][:,:,1]), numpy.max(minibatch_data[key][:,:,1]))
+                    # # print("Z: ", numpy.min(minibatch_data[key][:,:,2]), numpy.max(minibatch_data[key][:,:,2]))
+                    # # print("E: ", numpy.min(minibatch_data[key][:,:,3]), numpy.max(minibatch_data[key][:,:,3]))
                     # exit()
+                    
+                    # # print(minibatch_data[key])
+                    # # exit()
 
         return minibatch_data

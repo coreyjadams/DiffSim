@@ -33,11 +33,11 @@ class Diffusion(nn.Module):
         # The absolute scale of diffusion depends on the Z location:
         scale = numpy.sqrt(z).reshape((-1,1))
 
-        # Assuming the drift velocity might not be constant over the whole range:
-        drift_velocity_correction = self.drift_velocity(z.reshape(-1,1)).reshape(z.shape)
+        # # Assuming the drift velocity might not be constant over the whole range:
+        # drift_velocity_correction = self.drift_velocity(z.reshape(-1,1)).reshape(z.shape)
 
-        # Apply it as a "residual" type correction of max size ~25%
-        z = (1+ 0.05*drift_velocity_correction)*z
+        # # Apply it as a "residual" type correction of max size ~25%
+        # z = (1+ 0.05*drift_velocity_correction)*z
 
         # Need to reshape it to have the x/y/z dimension for broadcasting
 

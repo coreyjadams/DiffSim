@@ -39,9 +39,6 @@ import optax
 
 from flax.training import train_state
 
-# if
-# def profile(x): return x
-
 from tensorboardX import SummaryWriter
 
 
@@ -188,8 +185,11 @@ def main(cfg : OmegaConf) -> None:
             master_key = jax.device_put(random.PRNGKey(global_random_seed), target_device)
 
         # Initialize the model:
-        example_data = next(dataloader.iterate())
+        example_data = next(dataloader)
         sim_func, sim_params, next_rng_keys = init_simulator(master_key, cfg, example_data)
+
+        # if cfg.optimizer.mode == TrainingMode.Unsupervised:
+        #     disc_func, disc_params = init_discriminator(master_key, cfg, example_data)
 
 
         n_parameters = 0
@@ -290,7 +290,7 @@ def main(cfg : OmegaConf) -> None:
             )
 
 
-        dl_iterable = dataloader.iterate()
+        dl_iterable = dataloader
         comp_data = next(dl_iterable)
 
         # print("comp_data['S2Pmt'].shape: ", comp_data['S2Pmt'].shape, flush=True)
@@ -311,6 +311,31 @@ def main(cfg : OmegaConf) -> None:
         while state.step < cfg.run.iterations:
 
             if not active: break
+
+
+            # Add comparison plots every N iterations
+            if state.step % cfg.run.image_iteration == 0:
+                # print(sim_params)
+                if should_do_io(MPI_AVAILABLE, rank):
+                    save_dir = cfg.save_path / pathlib.Path(f'comp/{state.step}/')
+
+                    simulated_data = state.apply_fn(
+                        state.params,
+                        comp_data['e_deps'],
+                        rngs=next_rng_keys
+                    )
+
+
+                    # Remove the prefactor on simulated data for this:
+                    # It's not applied to the comp data, but we have to scale up the output
+                    # according to the prefactor
+                    for key in simulated_data.keys():
+                        if key in prefactor.keys():
+                            simulated_data[key] = simulated_data[key] / prefactor[key]
+
+                    comparison_plots(save_dir, simulated_data, comp_data)
+
+
 
             metrics = {}
             start = time.time()
@@ -354,27 +379,6 @@ def main(cfg : OmegaConf) -> None:
 
             metrics.update({"loss" : loss})
 
-
-            # Add comparison plots every N iterations
-            if state.step % cfg.run.image_iteration == 0:
-                # print(sim_params)
-                if should_do_io(MPI_AVAILABLE, rank):
-                    save_dir = cfg.save_path / pathlib.Path(f'comp/{state.step}/')
-
-                    simulated_data = state.apply_fn(
-                        state.params,
-                        comp_data['energy_deposits'],
-                        rngs=next_rng_keys
-                    )
-
-                    # Remove the prefactor on simulated data for this:
-                    # It's not applied to the comp data, but we have to scale up the output
-                    # according to the prefactor
-                    for key in simulated_data.keys():
-                        if key in prefactor.keys():
-                            simulated_data[key] = simulated_data[key] / prefactor[key]
-
-                    comparison_plots(save_dir, simulated_data, comp_data)
 
 
 
@@ -425,7 +429,7 @@ def iotest(dataloader, config):
     global active
     active = True
 
-    dl_iterable = dataloader.iterate()
+    dl_iterable = dataloader
 
     global_step = 0
 
@@ -437,6 +441,7 @@ def iotest(dataloader, config):
         start = time.time()
 
         batch = next(dl_iterable)
+
 
         metrics["io_time"] = time.time() - start
 

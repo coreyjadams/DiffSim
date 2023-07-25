@@ -38,7 +38,7 @@ class Data:
 class Krypton(Data):
     name: str = "krypton"
     mc:  bool = True
-    path: str = "/data/datasets/NEXT/NEW-simulation/Kr3/r0/s0/sim/r0_s0_larcv_all.h5"
+    path: str = "/data/datasets/NEXT/NEW-simulation/Kr/r0/r0_larcv_cuts.r0_merged.h5"
 
 
 cs = ConfigStore.instance()
