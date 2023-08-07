@@ -57,8 +57,9 @@ class NNSensorResponse(nn.Module):
     def __call__(self, simulator_input, z_positions, mask):
 
         if self.active:
-            # Put this through sigmoid to map from 0 to 1:
-            sensor_probs = nn.sigmoid(self.el_light_prob(simulator_input))
+            # Put this through sigmoid to map from 0 to 1, with a floor of 0.05:
+            # If the output can go to zero, it does not converge
+            sensor_probs = 0.05 + 0.95*nn.sigmoid(self.el_light_prob(simulator_input))
             # Put this into exp to ensure >=0 and increase dynamic range.
 
             # We compute the log of the light response amplitude from the NN
@@ -66,13 +67,18 @@ class NNSensorResponse(nn.Module):
             # Is approximately constant.  So we predict the constant + a position-
             # dependant correction
 
-            sensor_amp   = numpy.exp(self.el_light_amp(simulator_input) )
-
+            el_light_amp = self.el_light_amp(simulator_input)
+            
+            # convert to a real amplitude, >= 0
+            sensor_amp   = numpy.exp(el_light_amp + 0.1)
+            
             response_of_sensors = sensor_amp * sensor_probs
-
+            
+            
             waveforms = self.build_waveforms(response_of_sensors, z_positions, mask)
-
+            
             waveforms =  waveforms.sum(axis=0)
+            
 
             # # The waveforms are scaled overall by a parameter:
             # waveform_scale_v = self.variable(
@@ -109,7 +115,7 @@ def init_nnsensor_response(sensor_cfg):
         el_light_prob    = mlp_amp,
         el_light_amp     = mlp_sens ,
         waveform_ticks   = sensor_cfg.waveform_ticks,
-        bin_sigma        = sensor_cfg.bin_sigma
+        bin_sigma        = sensor_cfg.bin_sigma*10
     )
 
     return sr, None

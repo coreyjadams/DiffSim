@@ -9,10 +9,6 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
-# For database reads:
-import pandas as pd
-
-
 import logging
 from logging import handlers
 

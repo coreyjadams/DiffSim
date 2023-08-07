@@ -8,3 +8,5 @@ model_name: model
 mode:
   optimizer: novograd
   learning_rate: 0.001
+  s2pmt_scaling: 1.0
+  s2si_scaling: 0.0

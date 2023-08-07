@@ -8,6 +8,8 @@ def build_optimizer(config, params):
         weight_decay = config.mode.weight_decay
     )
 
+    # optimizer = optax.MultiSteps(optimizer, every_k_schedule=4)
+
     opt_state = optimizer.init(params)
 
 

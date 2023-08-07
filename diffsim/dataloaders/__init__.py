@@ -1,8 +1,7 @@
 from . larcv import create_larcv_dataset
 
 def build_dataloader(config, MPI_AVAILABLE):
-    import pandas as pd
-    # Load the sipm database:
+
 
     data_args = config.data
     batch_size = config.run.minibatch_size
@@ -20,7 +19,8 @@ def build_dataloader(config, MPI_AVAILABLE):
 
 
 
-
+    # import pandas as pd
+    # # Load the sipm database:
     # sipm_db = pd.read_pickle("database/new_sipm.pkl")
 
     # dl = krypton(

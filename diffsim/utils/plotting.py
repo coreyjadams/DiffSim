@@ -48,6 +48,12 @@ def plot_pmts(plot_dir, sim_pmts, real_pmts):
         # Find the peak of this PMT and only plot the nearby data:
         peak_tick = real_pmts[i_pmt].argmax()
 
+        print(f"PMT {i_pmt}")
+        print(f" - Real peak: {real_pmts[i_pmt][peak_tick]:.3f} at {peak_tick}")
+        print(f" - Sim value: {sim_pmts[i_pmt][peak_tick]:.3f} at {peak_tick}")
+        sim_peak = sim_pmts[i_pmt].argmax()
+        print(f" - Sim peak: {sim_pmts[i_pmt][sim_peak]:.3f} at {sim_peak}")
+
         start = max(peak_tick - 50, 0)
         end = min(peak_tick + 50, 550)
 
