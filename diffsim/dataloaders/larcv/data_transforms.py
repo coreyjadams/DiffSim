@@ -49,6 +49,18 @@ def larcv_edeps(input_array, meta):
 
     return output_array
 
+def larcv_event_deps(input_array):
+
+    # This is a larcv particle object array.
+    # 
+
+    # Split the pieces we need:
+    vertex = input_array['_vtx']
+    e_dep  = input_array['_energy_deposit']
+
+    return numpy.stack([vertex['_x'], vertex['_y'], vertex['_z'], e_dep], axis=-1)
+
+
 
 def larcvsparse_to_dense_2d(input_array, dense_shape):
 

@@ -19,6 +19,24 @@ import optax
 
 import pathlib
 from matplotlib import pyplot as plt
+import optax
+
+
+def build_optimizer(config, params):
+    opt_func_name = config.mode.optimizer.name
+
+
+    optimizer = getattr(optax, opt_func_name)(
+        config.mode.learning_rate,
+        weight_decay = config.mode.weight_decay
+    )
+
+    # optimizer = optax.MultiSteps(optimizer, every_k_schedule=4)
+
+    opt_state = optimizer.init(params)
+
+
+    return optimizer, opt_state
 
 
 # def close_over_training_step(config, MPI_AVAILABLE, sim_func, optimizer):
@@ -42,6 +60,8 @@ def close_over_training_step(config, MPI_AVAILABLE):
         # Why compute the log?  Because the loss is SO HIGH at the start
         # Adding 1.0 contributes nothing to the loss when the signals are equal.
         loss = numpy.log(difference + 1.)
+
+        # But, as loss decreases, 
 
         # Optionally, may increase a with a focal term:
 

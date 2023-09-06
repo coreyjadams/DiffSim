@@ -1,0 +1,11 @@
+defaults:
+  - _self_
+  - base_config
+  - mode: train_unsupervised
+  - override data: krypton_8677
+
+save_path: output/${run.id}/${data.name}/
+model_name: model
+
+mode:
+  optimizer: novograd

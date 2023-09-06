@@ -21,25 +21,36 @@ def init_checkpointer(save_path):
         options
     )
 
-    def save_weights(train_state):
+    def save_weights(train_state, disc_state):
 
-        save_args = orbax_utils.save_args_from_target(train_state)
+        if disc_state is None:
+            save_args = orbax_utils.save_args_from_target(train_state)
+            print(save_args)
+        else:
+            save_args = orbax_utils.save_args_from_target([train_state, disc_state])
+            print(save_args)
 
         checkpoint_manager.save(train_state.step, train_state, save_kwargs={'save_args' : save_args})
 
         return
 
 
-    def restore_weights(target):
+    def restore_weights(target, disc_target):
 
         global_step = checkpoint_manager.latest_step()
-        if global_step is None: return None
+        if global_step is None: return None, None
 
+
+        if disc_target is not None:
+            target = [target, disc_target]
 
         checkpoint = checkpoint_manager.restore(global_step, items=target)
+        print(checkpoint)
+        if disc_target is None or checkpoint is None:
 
-
-        return checkpoint
+            return checkpoint, None
+        else:
+            return checkpoint[0], checkpoint[1]
 
 
     return save_weights, restore_weights
