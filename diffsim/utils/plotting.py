@@ -56,8 +56,10 @@ def plot_pmts(plot_dir, sim_pmts, real_pmts):
 
         start = max(peak_tick - 50, 0)
         end = min(peak_tick + 50, 550)
+        print("start: ", start)
+        print("end: ", end)
 
-        x_ticks = numpy.arange(start, end) + start
+        x_ticks = numpy.arange(start, end)
 
         fig = plt.figure(figsize=(16,9))
         plt.plot(x_ticks, sim_pmts[i_pmt][start:end], label=f"Generated PMT {i_pmt} signal")
@@ -93,7 +95,7 @@ def plot_sipms(plot_dir, sim_sipms, real_sipms):
             start = max(max_z - 50, 0)
             end = min(max_z + 50, 550)
 
-            x_ticks = numpy.arange(start, end) + start
+            x_ticks = numpy.arange(start, end)
 
 
             # print(sim_sipms[i_x][i_y][max_z-5:max_z+5])

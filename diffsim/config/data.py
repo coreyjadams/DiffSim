@@ -45,7 +45,7 @@ class KryptonMC(Data):
 class Krypton8677(Data):
     name: str = "krypton"
     mc:  bool = False
-    path: str = "/data/datasets/NEXT/NEW-simulation/kr-data/r8677_krypton_filtered_train.h5"
+    path: str = "/data/datasets/NEXT/NEW-simulation/kr-data/larcv//larcv_0001_8677_trigger1_v1.2.0_20191122_krbg_cuts.h5"
 
 cs = ConfigStore.instance()
 cs.store(group="data", name="krypton_mc", node=KryptonMC)

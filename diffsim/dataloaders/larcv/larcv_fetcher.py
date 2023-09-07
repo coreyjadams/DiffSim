@@ -326,6 +326,7 @@ class larcv_dataset(object):
 
                 if "event" in key:
                     minibatch_data["e_deps"] = data_transforms.larcv_event_deps(minibatch_data[key])
+                    # exit()
                     # Drop the 'event' piece:
                     minibatch_data.pop(key)
 

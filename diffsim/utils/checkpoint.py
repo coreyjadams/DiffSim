@@ -25,12 +25,12 @@ def init_checkpointer(save_path):
 
         if disc_state is None:
             save_args = orbax_utils.save_args_from_target(train_state)
-            print(save_args)
+            save_target = train_state
         else:
             save_args = orbax_utils.save_args_from_target([train_state, disc_state])
-            print(save_args)
+            save_target = [train_state, disc_state]
 
-        checkpoint_manager.save(train_state.step, train_state, save_kwargs={'save_args' : save_args})
+        checkpoint_manager.save(train_state.step, save_target, save_kwargs={'save_args' : save_args})
 
         return
 
@@ -45,7 +45,7 @@ def init_checkpointer(save_path):
             target = [target, disc_target]
 
         checkpoint = checkpoint_manager.restore(global_step, items=target)
-        print(checkpoint)
+
         if disc_target is None or checkpoint is None:
 
             return checkpoint, None
