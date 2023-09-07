@@ -74,11 +74,12 @@ def interupt_handler( sig, frame):
 def update_summary_params(metrics, params):
 
     # Add the diffusion:
-    metrics["physics/diffusion_0"] = params["diffusion"]["diff"]["diffusion"][0]
-    metrics["physics/diffusion_1"] = params["diffusion"]["diff"]["diffusion"][1]
-    metrics["physics/diffusion_2"] = params["diffusion"]["diff"]["diffusion"][2]
+    metrics["physics/diffusion_0"]  = params["diffusion"]["diff"]["diffusion"][0]
+    metrics["physics/diffusion_1"]  = params["diffusion"]["diff"]["diffusion"][1]
+    metrics["physics/diffusion_2"]  = params["diffusion"]["diff"]["diffusion"][2]
     # metrics["physics/el_spread"]   = params["el_spread"]["sipm_s2"]["el_spread"][0]
-    metrics["physics/lifetime"]    = params["lifetime"]["lifetime"]["lifetime"][0]
+    metrics["physics/lifetime"]     = params["lifetime"]["lifetime"]["lifetime"][0]
+    # metrics["physics/nn_bin_sigma"] = params["nn_bin_sigma"]["pmt_s2"]["nn_bin_sigma"][0]
 
     return metrics
 
@@ -182,6 +183,8 @@ def main(cfg : OmegaConf) -> None:
 
         # Initialize the model:
         example_data = next(dataloader)
+        # print([example_data[key].shape for key in example_data.keys()])
+        # print([numpy.max(example_data[key]) for key in example_data.keys()])
         sim_func, sim_params, next_rng_keys = init_simulator(master_key, cfg, example_data)
 
         # if cfg.optimizer.mode == TrainingMode.Unsupervised:

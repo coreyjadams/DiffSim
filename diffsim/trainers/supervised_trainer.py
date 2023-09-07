@@ -25,7 +25,7 @@ from matplotlib import pyplot as plt
 def close_over_training_step(config, MPI_AVAILABLE):
 
     @jit
-    def compute_loss(simulated_signals, real_signals):
+    def compute_log_loss(simulated_signals, real_signals):
         '''
         Compute loss over a single event.
         Gets vmap'd over a batch.
@@ -96,11 +96,24 @@ def close_over_training_step(config, MPI_AVAILABLE):
 
             # Compute the loss, mean over the batch:
             loss = {
-                key : vmap(compute_loss, in_axes=(0,0))(
+                key : vmap(compute_log_loss, in_axes=(0,0))(
                     simulated_waveforms[key],
                     batch[key]).mean()
                 for key in ["S2Si", "S2Pmt"]
             }
+            # loss = {}
+            # loss["S2Pmt"] = optax.huber_loss(simulated_waveforms["S2Pmt"], batch["S2Pmt"])
+            # loss["S2Si"]  = optax.l2_loss(simulated_waveforms["S2Si"], batch["S2Si"])
+
+
+            # loss["S2Pmt"] = numpy.sum(loss["S2Pmt"], axis=-1)
+            # loss["S2Pmt"] = numpy.mean(loss["S2Pmt"])
+
+            # loss["S2Si"] = numpy.sum(loss["S2Si"], axis=-1)
+            # loss["S2Si"] = numpy.mean(loss["S2Si"])
+
+            # print(loss["S2Pmt"].shape)
+            # print(loss["S2Si"].shape)
 
             # Compute the residual which is an unweight, unnormalized comparison:
             metrics = {

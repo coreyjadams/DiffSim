@@ -21,7 +21,7 @@ class NNSensorResponse(nn.Module):
     el_light_amp:     MLP # NN that simulates the amount of light from EL position overall
     waveform_ticks:   int
     bin_sigma:        float
-
+# 
     # Functions to build waveforms based on weights and responses:
     @partial(vmap, in_axes=[None, 0,0,0])
     def build_waveforms(self, sensor_response, z_positions, weights):
@@ -39,7 +39,17 @@ class NNSensorResponse(nn.Module):
 
         exp_input = numpy.linspace(start=starts, stop=stops, num=self.waveform_ticks, axis=-1)
 
-        exp_values = numpy.exp( - (exp_input - z_positions)**2.  / (2. * self.bin_sigma))
+
+        # bin_sigma_v = self.variable(
+        #         "nn_bin_sigma", "nn_bin_sigma",
+        #         lambda s : 5*numpy.ones(s, dtype=z_positions.dtype),
+        #         (1,), # shape is scalar
+        #     )
+        # bin_sigma = bin_sigma_v.value
+
+
+
+        exp_values = numpy.exp( - (exp_input - z_positions)**2.  / (2. * self.bin_sigma**2))
 
 
 
@@ -47,7 +57,8 @@ class NNSensorResponse(nn.Module):
         exp_values = exp_values * weights
 
         # Normalize the values:
-        exp_values = exp_values.transpose() * (0.39894228040/numpy.sqrt(self.bin_sigma))
+        # exp_values = exp_values.transpose()
+        exp_values = exp_values.transpose() * (0.39894228040/numpy.sqrt(self.bin_sigma**2))
 
 
         waveforms = numpy.matmul(exp_values, sensor_response)
@@ -115,7 +126,7 @@ def init_nnsensor_response(sensor_cfg):
         el_light_prob    = mlp_amp,
         el_light_amp     = mlp_sens ,
         waveform_ticks   = sensor_cfg.waveform_ticks,
-        bin_sigma        = sensor_cfg.bin_sigma*10
+        bin_sigma        = sensor_cfg.bin_sigma
     )
 
     return sr, None

@@ -21,7 +21,7 @@ class GSensorResponse(nn.Module):
 
     """
     active:           bool
-    sensor_simulator: MLP
+    EL_simulator: MLP
     waveform_ticks:   int
     bin_sigma:        float
     sensor_locations: numpy.ndarray
@@ -90,9 +90,9 @@ class GSensorResponse(nn.Module):
 
         if self.active:
 
-            # The sensor simulator represents the total amount of light emitted
+            # The EL simulator represents the total amount of light emitted
             # at this particular point on the EL region.
-            response_of_sensors = self.sensor_simulator(simulator_input)
+            response_of_sensors = self.EL_simulator(simulator_input)
             # The exp forces it to be positive and gives a broad dynamic range:
             response_of_sensors = numpy.exp(response_of_sensors)
 
@@ -101,15 +101,15 @@ class GSensorResponse(nn.Module):
 
             waveforms = waveforms.sum(axis=0)
 
-            # # The waveforms are scaled overall by a parameter _per sensor_:
-            # sensor_shape = self.sensor_locations.shape[0:2]
-            # waveform_scale_v = self.variable(
-            #     "waveform_scale", "waveform_scale",
-            #     lambda s : 1.0*numpy.ones(s, dtype=waveforms.dtype),
-            #     sensor_shape
-            # )
-            # waveform_scale = waveform_scale_v.value
-            # waveforms = waveforms * (1. + waveform_scale.reshape(sensor_shape + (-1,)))
+            # The waveforms are scaled overall by a parameter _per sensor_:
+            sensor_shape = self.sensor_locations.shape[0:2]
+            waveform_scale_v = self.variable(
+                "waveform_scale", "waveform_scale",
+                lambda s : 0.1*numpy.ones(s, dtype=waveforms.dtype),
+                sensor_shape
+            )
+            waveform_scale = waveform_scale_v.value
+            waveforms = waveforms * (1. + waveform_scale.reshape(sensor_shape + (-1,)))
 
             return waveforms
         else:
@@ -118,6 +118,7 @@ class GSensorResponse(nn.Module):
 def init_gsensor_response(sensor_cfg):
 
     mlp_config = sensor_cfg.mlp_cfg
+    mlp_config.last_activation=True
     mlp, _ = init_mlp(mlp_config, nn.relu)
 
     # The sipm locations:
@@ -130,7 +131,7 @@ def init_gsensor_response(sensor_cfg):
 
     sr = GSensorResponse(
         active           = sensor_cfg.active,
-        sensor_simulator = mlp,
+        EL_simulator     = mlp,
         waveform_ticks   = sensor_cfg.waveform_ticks,
         bin_sigma        = sensor_cfg.bin_sigma,
         sensor_locations = sipm_locations,
