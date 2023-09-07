@@ -5,7 +5,7 @@ def build_dataloader(config, MPI_AVAILABLE):
 
     data_args = config.data
     batch_size = config.run.minibatch_size
-    batch_keys = ["S2Si", "S2Pmt", "e_deps"]
+    batch_keys = ["S2Si", "S2Pmt"]
 
     input_file = data_args.path
     name       = data_args.name

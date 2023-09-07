@@ -48,6 +48,8 @@ from diffsim.config import Config
 # if MPI_AVAILABLE:
 #     import horovod.tensorflow as hvd
 
+from diffsim.config.mode import ModeKind
+
 from diffsim.simulator import init_simulator
 # from diffsim.simulator import NEW_Simulator, init_NEW_simulator
 from diffsim.simulator import batch_update_rng_keys
@@ -57,7 +59,6 @@ from diffsim.utils import summary, model_summary
 from diffsim.utils import init_checkpointer
 from diffsim.utils import set_compute_parameters, configure_logger, should_do_io
 
-from diffsim.trainers import build_optimizer, close_over_training_step
 
 from diffsim.dataloaders import build_dataloader
 
@@ -72,7 +73,7 @@ def interupt_handler( sig, frame):
 
 @jit
 def update_summary_params(metrics, params):
-
+    # print(params["params"].keys())
     # Add the diffusion:
     metrics["physics/diffusion_0"]  = params["diffusion"]["diff"]["diffusion"][0]
     metrics["physics/diffusion_1"]  = params["diffusion"]["diff"]["diffusion"][1]
@@ -137,7 +138,7 @@ def main(cfg : OmegaConf) -> None:
 
 
 
-    # Training state variables:
+    # Training generator_state variables:
     global active
     active = True
 
@@ -187,8 +188,6 @@ def main(cfg : OmegaConf) -> None:
         # print([numpy.max(example_data[key]) for key in example_data.keys()])
         sim_func, sim_params, next_rng_keys = init_simulator(master_key, cfg, example_data)
 
-        # if cfg.optimizer.mode == TrainingMode.Unsupervised:
-        #     disc_func, disc_params = init_discriminator(master_key, cfg, example_data)
 
 
         n_parameters = 0
@@ -197,19 +196,40 @@ def main(cfg : OmegaConf) -> None:
             n_parameters += numpy.prod(numpy.asarray(p.shape))
         logger.info(f"Number of parameters in this network: {n_parameters}")
 
+        # Import the right trainer and optimizer functions based on training mode:
+        if cfg.mode.name == ModeKind.supervised:
+            from diffsim.trainers.supervised_trainer import build_optimizer, close_over_training_step
+        elif cfg.mode.name == ModeKind.unsupervised:
+            from diffsim.discriminator import init_discriminator
+            disc_func, disc_params = init_discriminator(master_key, cfg, example_data)
+            from diffsim.trainers.unsupervised_trainer import build_optimizer, close_over_training_step
 
         optimizer, opt_state = build_optimizer(cfg, sim_params)
 
         global_step = 0
 
-        # Create a train state:
-        state = train_state.TrainState(
+        # Create a train generator_state:
+        generator_state = train_state.TrainState(
             step      = global_step,
             apply_fn  = sim_func,
             params    = sim_params,
             tx        = optimizer,
             opt_state = opt_state,
         )
+
+        # In unsupervised mode, create a second train state to hold the discriminator properties:
+        if cfg.mode.name == ModeKind.unsupervised:
+            disc_optimizer, disc_opt_state = build_optimizer(cfg, disc_params)
+            discriminator_state = train_state.TrainState(
+                step      = global_step,
+                apply_fn  = disc_func,
+                params    = disc_params,
+                tx        = disc_optimizer,
+                opt_state = disc_opt_state
+            )
+        else:
+            # 
+            discriminator_state = None
 
         #     # self.trainer = self.build_trainer(batch, self.simulator_fn, self.simulator_params)
 
@@ -226,11 +246,13 @@ def main(cfg : OmegaConf) -> None:
         # Restore the weights
 
         if should_do_io(MPI_AVAILABLE, rank):
-
-            r_state = restore_weights(state)
+            # print(generator_state)
+            # print(discriminator_state)
+            r_state, r_disc_state = restore_weights(generator_state, discriminator_state)
 
             if r_state is not None:
-                state  = r_state
+                generator_state  = r_state
+                discriminator_state = r_disc_state
                 logger.info("Loaded weights, optimizer and global step!")
             else:
                 logger.info("Failed to load weights!")
@@ -238,61 +260,16 @@ def main(cfg : OmegaConf) -> None:
 
 
         if MPI_AVAILABLE and size > 1:
-            logger.info("Broadcasting initial model and opt state.")
-            # We have to broadcast the wavefunction parameter here:
-            token = None
+            logger.info("Broadcasting initial model and opt generator_state.")
+            from diffsim.utils.mpi import broadcast_train_state
+            generator_state = broadcast_train_state(generator_state)
+            if discriminator_state is not None:
+                discriminator_state = broadcast_train_state(discriminator_state)
 
-            # First, flatten the parameter trees:
-            sim_params_flat, treedef = jax.tree_util.tree_flatten(state.params)
-
-            # need to unfreeze to do this:
-            for i, param in enumerate(sim_params_flat):
-                sim_params_flat[i], token = mpi4jax.bcast(
-                    sim_params_flat[i],
-                    root = 0,
-                    comm = MPI.COMM_WORLD,
-                    token = token
-                )
-            # And re-tree it:
-            bcast_params = jax.tree_util.tree_unflatten(tree_def, sim_params_flat)
-
-
-            # Now do the optimizer the same way:
-            opt_state_flat, opt_treedef = jax.tree_util.tree_flatten(state.opt_state)
-
-            # need to unfreeze to do this:
-            for i, param in enumerate(opt_state_flat):
-                opt_state_flat[i], token = mpi4jax.bcast(
-                    opt_state_flat[i],
-                    root  = 0,
-                    comm  = MPI.COMM_WORLD,
-                    token = token
-                )
-            # And re-tree it:
-            bcast_opt_state = jax.tree_util.tree_unflatten(opt_treedef, opt_state_flat)
-
-
-            # And the global step:
-            bcast_step, token = mpi4jax.bcast(state.step,
-                            root = 0,
-                            comm = MPI.COMM_WORLD,
-                            token = token)
-            logger.info("Done broadcasting initial model and optimizer state.")
-
-            # Finally, create an updated state:
-            state = train_state.TrainState(
-                step      = bcast_step,
-                apply_fn  = sim_func,
-                params    = bcast_params,
-                tx        = optimizer,
-                opt_state = bcast_opt_state,
-            )
 
 
         dl_iterable = dataloader
         comp_data = next(dl_iterable)
-
-        # print("comp_data['S2Pmt'].shape: ", comp_data['S2Pmt'].shape, flush=True)
 
         prefactor = {
                 "S2Pmt" : 1.,
@@ -303,23 +280,24 @@ def main(cfg : OmegaConf) -> None:
         #     if key in prefactor.keys():
         #         comp_data[key] = prefactor[key]*comp_data[key]
 
-        batch = comp_data
+        # batch = comp_data
 
+        print(comp_data["e_deps"])
         end = None
 
-        while state.step < cfg.run.iterations:
+        while generator_state.step < cfg.run.iterations:
 
             if not active: break
 
 
             # Add comparison plots every N iterations
-            if state.step % cfg.run.image_iteration == 0:
+            if generator_state.step % cfg.run.image_iteration == 0:
                 # print(sim_params)
                 if should_do_io(MPI_AVAILABLE, rank):
-                    save_dir = cfg.save_path / pathlib.Path(f'comp/{state.step}/')
+                    save_dir = cfg.save_path / pathlib.Path(f'comp/{generator_state.step}/')
 
-                    simulated_data = state.apply_fn(
-                        state.params,
+                    simulated_data = generator_state.apply_fn(
+                        generator_state.params,
                         comp_data['e_deps'],
                         rngs=next_rng_keys
                     )
@@ -353,10 +331,18 @@ def main(cfg : OmegaConf) -> None:
             # Split the keys:
             next_rng_keys = batch_update_rng_keys(next_rng_keys)
 
-            state, loss, train_metrics = train_step(
-                state,
-                batch,
-                next_rng_keys)
+            if discriminator_state is not None:
+                generator_state, discriminator_state, loss, train_metrics = train_step(
+                    generator_state,
+                    discriminator_state,
+                    batch,
+                    next_rng_keys)
+
+            else:
+                generator_state, loss, train_metrics = train_step(
+                    generator_state,
+                    batch,
+                    next_rng_keys)
 
             # Remove the residual effect on the metrics:
             for key in train_metrics.keys():
@@ -368,11 +354,11 @@ def main(cfg : OmegaConf) -> None:
 
             metrics.update(train_metrics)
             # Add to the metrics the physical parameters:
-            metrics = update_summary_params(metrics, state.params)
+            metrics = update_summary_params(metrics, generator_state.params)
             if cfg.run.profile:
                 if should_do_io(MPI_AVAILABLE, rank):
                     x.block_until_ready()
-                    jax.profiler.save_device_memory_profile(str(cfg.save_path) + f"memory{state.step}.prof")
+                    jax.profiler.save_device_memory_profile(str(cfg.save_path) + f"memory{generator_state.step}.prof")
 
 
 
@@ -382,9 +368,9 @@ def main(cfg : OmegaConf) -> None:
 
 
 
-            if state.step % cfg.run.checkpoint  == 0:
+            if generator_state.step % cfg.run.checkpoint  == 0:
                 if should_do_io(MPI_AVAILABLE, rank):
-                    save_weights(state)
+                    save_weights(generator_state, discriminator_state)
 
             if cfg.run.profile:
                 if should_do_io(MPI_AVAILABLE, rank):
@@ -396,19 +382,19 @@ def main(cfg : OmegaConf) -> None:
             metrics['img_per_sec'] = size * cfg.run.minibatch_size / metrics['time']
 
             if should_do_io(MPI_AVAILABLE, rank):
-                summary(writer, metrics, state.step)
+                summary(writer, metrics, generator_state.step)
 
             # Iterate:
-            # state.step += 1
+            # generator_state.step += 1
 
-            if state.step % 1 == 0:
-                logger.info(f"step = {state.step}, loss = {metrics['loss']:.3f}")
+            if generator_state.step % 1 == 0:
+                logger.info(f"step = {generator_state.step}, loss = {metrics['loss']:.3f}")
                 logger.info(f"time = {metrics['time']:.3f} ({metrics['io_time']:.3f} io) - {metrics['img_per_sec']:.3f} Img/s")
 
     # Save the weights at the very end:
     if should_do_io(MPI_AVAILABLE, rank):
         try:
-            save_weights(state)
+            save_weights(generator_state)
         except:
             pass
 

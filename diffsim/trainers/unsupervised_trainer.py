@@ -16,126 +16,156 @@ from logging import handlers
 logger = logging.getLogger()
 
 import optax
+import flax.linen as nn
 
 import pathlib
 from matplotlib import pyplot as plt
+
+
+def build_optimizer(config, params):
+
+    opt_func_name = config.mode.optimizer.name
+
+    optimizer = getattr(optax, opt_func_name)(
+        config.mode.learning_rate,
+        weight_decay = config.mode.weight_decay
+    )
+
+    # optimizer = optax.MultiSteps(optimizer, every_k_schedule=4)
+
+    opt_state = optimizer.init(params)
+
+
+    return optimizer, opt_state
+
 
 
 # def close_over_training_step(config, MPI_AVAILABLE, sim_func, optimizer):
 def close_over_training_step(config, MPI_AVAILABLE):
 
     @jit
-    def compute_loss(simulated_signals, real_signals):
-        '''
-        Compute loss over a single event.
-        Gets vmap'd over a batch.
-        '''
-        power = config.mode.loss_power
+    def train_one_step(generator_state, discriminator_state, batch, rng_seeds):
 
-        # First, we compute the difference in the two signals w/ abs value:
-        difference = numpy.abs(simulated_signals - real_signals)**power
-        # The power is sort of like a focal term.
+        # This is like a GAN-style loop, except  the generator 
+        # is physics-based.
 
-        # Next compute the log of this difference, with a baseline term to prevent
-        # it from going negative:
-        # Why compute the log?  Because the loss is SO HIGH at the start
-        # Adding 1.0 contributes nothing to the loss when the signals are equal.
-        loss = numpy.log(difference + 1.)
-
-        # Optionally, may increase a with a focal term:
-
-        # # Because this data is so sparse, we multiply the difference
-        # # by the input data to push the loss up in important places and
-        # # down in unimportant places.  But, don't want the loss to be zero
-        # # where the wavefunction is zero, so put a floor:
-        # mask = real_signals > 0.1
-        # # Cast it to floating point:
-        # mask = mask.astype("float32")
-        # # Here's the floor:
-        # weight = 1e-4*numpy.ones(difference.shape)
-        # # Amplify the non-zero regions
-        # weight = weight + mask #(so the loss is either 1e-4 or 1.0001)
-        #
-        # difference = difference * weight
+        # The optimization proceedure looks like this:
+        # - Take the energy depositions, and generate signals
+        # - Take the generated signals, and discriminate on them
+        # - Take the real signals, and discriminate on them
+        # - Compute the discriminator loss for optimizing the discriminator
+        # - Compute the discriminator loss for optimizing the generator
+        # - Compute the gradients for whichever will be optimized this step (currently both)
+        # - Apply the updates and return
 
 
-        # Take the sum of the difference over the last axis, the waveform:
-        loss = numpy.sum(loss, axis=-1)
-        # loss = numpy.sum(loss, axis=-1) / numpy.sum(weight)
+        # pritn(state)
 
-        # Take the mean of the loss over the sensor arrays:
-        loss = loss.mean()
+        def g_loss_fn(g_params):
 
-        # We weigh the loss by the integral of the signal too:
-
-        # And, return the loss as a scalar:
-        return loss
-
-    @jit
-    def compute_residual(simulated_signals, real_signals):
-        # Here it is measured over each waveform:
-        residual = (simulated_signals - real_signals)**2
-        # Sum over the last axis, time times, and sqrt:
-        residual = numpy.sqrt(residual.sum(axis=-1))
-
-        # Take the mean of this over all waveforms:
-        return numpy.mean(residual)
-
-    @jit
-    def train_one_step(state, batch, rng_seeds):
-
-
-        def loss_fn(params):
-            simulated_waveforms = state.apply_fn(
-                    params,
-                    batch['energy_deposits'],
+            # Generate signals:
+            simulated_waveforms = generator_state.apply_fn(
+                    g_params,
+                    batch['e_deps'],
                     rngs=rng_seeds
                 )
-
-            # Compute the loss, mean over the batch:
-            loss = {
-                key : vmap(compute_loss, in_axes=(0,0))(
-                    simulated_waveforms[key],
-                    batch[key]).mean()
-                for key in ["S2Si", "S2Pmt"]
-            }
-
-            # Compute the residual which is an unweight, unnormalized comparison:
-            metrics = {
-                "residual/" + key : vmap(compute_residual, in_axes=(0,0))(simulated_waveforms[key], batch[key]).mean()
-                for key in ["S2Si", "S2Pmt"]
-            }
-
-            metrics.update(
-                { "loss/" + key : loss[key] for key in loss.keys() }
+            discriminated_gen = discriminator_state.apply_fn(
+                discriminator_state.params,
+                simulated_waveforms
             )
 
-            # loss =  loss["S2Pmt"]
-            # loss =  loss["S2Si"]
-            loss = config.mode.s2pmt_scaling * loss["S2Pmt"] + config.mode.s2si_scaling * loss["S2Si"]
+            # We try to get the generator close to 1.0 from the discriminator:
+            g_loss = numpy.mean(optax.sigmoid_binary_cross_entropy(
+                numpy.ones_like(discriminated_gen), 
+                nn.sigmoid(discriminated_gen)
+            ))
+            metrics = {
+                "acc/gen" : numpy.mean(discriminated_gen > 0.5),
+                "loss/gen" : g_loss,
+                "Mean/g-r": numpy.mean(discriminated_gen)
+            }
 
-            return loss, metrics
+            return g_loss, metrics
 
-        # print(state.apply_fn)
+        # In this, we say that 1.0 is "REAL" and 0.0 is "FAKE" 
+        # in the output of the discriminator
 
-        grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
+        def d_loss_fn(d_params):
 
-        (loss, metrics), grads = grad_fn(state.params)
+
+            # Generate signals:
+            simulated_waveforms = generator_state.apply_fn(
+                    generator_state.params,
+                    batch['e_deps'],
+                    rngs=rng_seeds
+                )
+            
+
+            discriminated_real = discriminator_state.apply_fn(
+                d_params,
+                {"S2Si"  : batch["S2Si"], 
+                 "S2Pmt" : batch["S2Pmt"]
+                }
+            )
+            
+
+            discriminated_gen = discriminator_state.apply_fn(
+                d_params,
+                simulated_waveforms
+            )
+            alpha = 0.9
+            smooth_ones_labels = alpha     * numpy.ones_like(discriminated_gen)
+            smooth_zero_labels = (1-alpha) * numpy.ones_like(discriminated_gen)
+
+            # print(discriminated_real)
+            # print(discriminated_gen)
+            # We want the discriminator to be correct, but with smooth 
+            # labels so it doesn't get too confident:
+            d_loss_real = numpy.mean(optax.sigmoid_binary_cross_entropy(
+                smooth_ones_labels,
+                nn.sigmoid(discriminated_real)
+            ))
+            d_loss_gen = numpy.mean(optax.sigmoid_binary_cross_entropy(
+                smooth_zero_labels,
+                nn.sigmoid(discriminated_gen)
+            ))
+
+
+            metrics = {
+                "acc/disc-real" : numpy.mean(discriminated_real > 0.5),
+                "acc/disc-gen" : numpy.mean(discriminated_gen <= 0.5),
+                "loss/disc-real" : d_loss_real,
+                "loss/disc-gen" : d_loss_gen,
+                "Mean/d-g": numpy.mean(discriminated_gen),
+                "Mean/d-r": numpy.mean(discriminated_real),
+            }
+            # print(d_loss_real.shape)
+            # print(d_loss_gen.shape)
+
+            return d_loss_real + d_loss_gen, metrics
+
+
+        d_grad_fn = jax.value_and_grad(d_loss_fn, has_aux=True)
+        g_grad_fn = jax.value_and_grad(g_loss_fn,     has_aux=True)
+
+        # First, do the discriminator:
+        (d_loss, d_metrics), d_grads = d_grad_fn(discriminator_state.params)
+        (g_loss, g_metrics), g_grads = g_grad_fn(generator_state.params)
+
+        g_metrics.update(d_metrics)
 
 
         if MPI_AVAILABLE:
             # Intercept here and allreduce the dict if necessary:
-            grads = allreduce_dict(grads)
+            d_grads = allreduce_dict(d_grads)
+            g_grads = allreduce_dict(g_grads)
 
         # Apply the gradients with the optimizer:
-        state = state.apply_gradients(grads=grads)
-
-        # (loss_value, metrics), grads = jax.value_and_grad(forward, argnums=0, has_aux=True)(
-        #     state, batch, rng_seeds)
+        discriminator_state = discriminator_state.apply_gradients(grads=d_grads)
+        generator_state     = generator_state.apply_gradients(grads=g_grads)
 
 
-
-        return state, loss, metrics
+        return generator_state, discriminator_state, d_loss+g_loss, g_metrics
 
     return train_one_step
 

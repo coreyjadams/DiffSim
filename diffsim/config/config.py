@@ -47,7 +47,7 @@ cs.store(
 
 defaults = [
     {"run" : "base_run"},
-    {"mode": "train"},
+    # {"mode": "train_unsupervised"},
     {"data": "krypton"},
     {"physics":"NEW"},
 ]
@@ -65,5 +65,7 @@ class Config:
     mode:       Mode = MISSING
     data:       Data = MISSING
     seed:        int = 0 
+    save_path:   str = MISSING
+    model_name:  str = MISSING
 
 cs.store(name="base_config", node=Config)

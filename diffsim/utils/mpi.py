@@ -95,3 +95,56 @@ def allreduce_dict(dictionary):
 
     reduced_dict = unflatten_tensor_into_tree(flat_tensor, shapes, treedef)
     return reduced_dict
+
+def broadcast_train_state(state):
+    # We have to broadcast the wavefunction parameters here:
+    token = None
+
+    # First, flatten the parameter trees:
+    params_flat, treedef = jax.tree_util.tree_flatten(state.params)
+
+    # need to unfreeze to do this:
+    for i, param in enumerate(params_flat):
+        params_flat[i], token = mpi4jax.bcast(
+            params_flat[i],
+            root = 0,
+            comm = MPI.COMM_WORLD,
+            token = token
+        )
+
+    # And re-tree it after broadcast:
+    bcast_params = jax.tree_util.tree_unflatten(tree_def, params_flat)
+
+
+    # Now do the optimizer the same way:
+    opt_state_flat, opt_treedef = jax.tree_util.tree_flatten(state.opt_state)
+
+    # need to unfreeze to do this:
+    for i, param in enumerate(opt_state_flat):
+        opt_state_flat[i], token = mpi4jax.bcast(
+            opt_state_flat[i],
+            root  = 0,
+            comm  = MPI.COMM_WORLD,
+            token = token
+        )
+    # And re-tree it:
+    bcast_opt_state = jax.tree_util.tree_unflatten(opt_treedef, opt_state_flat)
+
+
+    # And the global step:
+    bcast_step, token = mpi4jax.bcast(generator_state.step,
+                    root = 0,
+                    comm = MPI.COMM_WORLD,
+                    token = token)
+    logger.info("Done broadcasting initial model and optimizer generator_state.")
+
+    # Finally, create an updated state:
+    updated_state = train_state.TrainState(
+        step      = bcast_step,
+        apply_fn  = state.sim_func,
+        params    = bcast_params,
+        tx        = state.optimizer,
+        opt_state = bcast_opt_state,
+    )
+
+    return updated_state

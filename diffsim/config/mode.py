@@ -6,10 +6,11 @@ from omegaconf import MISSING
 
 
 class ModeKind(Enum):
-    train     = 0
-    iotest    = 1
-    inference = 2
-    analysis  = 3
+    supervised   = 0
+    unsupervised = 1
+    iotest       = 2
+    inference    = 3
+    analysis     = 4
 
 class OptimizerKind(Enum):
     rmsprop  = 0
@@ -30,17 +31,27 @@ class Mode:
     weights_location:   str      = ""
 
 @dataclass
-class Train(Mode):
+class TrainBase(Mode):
     checkpoint_iteration:   int           = 500
     summary_iteration:      int           = 1
     logging_iteration:      int           = 1
+    weight_decay:           float         = 5e-3
+
+@dataclass
+class TrainSupervised(TrainBase):
     optimizer:              OptimizerKind = OptimizerKind.novograd
     loss_power:             float         = 1.0
-    name:                   ModeKind      = ModeKind.train
+    name:                   ModeKind      = ModeKind.supervised
     learning_rate:          float         = 0.01
     s2pmt_scaling:          float         = 0.01
     s2si_scaling:           float         = 10.
-    weight_decay:           float         = 5e-3
+
+
+@dataclass
+class TrainUnsupervised(TrainBase):
+    optimizer:              OptimizerKind = OptimizerKind.novograd
+    name:                   ModeKind      = ModeKind.unsupervised
+    learning_rate:          float         = 0.01
 
 @dataclass
 class Inference(Mode):
@@ -59,7 +70,8 @@ class IOTest(Mode):
 
 
 cs = ConfigStore.instance()
-cs.store(group="mode", name="train", node=Train)
+cs.store(group="mode", name="train_supervised",     node=TrainSupervised)
+cs.store(group="mode", name="train_unsupervised",   node=TrainUnsupervised)
 cs.store(group="mode", name="iotest", node=IOTest)
 cs.store(group="mode", name="inference", node=Inference)
 cs.store(group="mode", name="analysis", node=Analysis)

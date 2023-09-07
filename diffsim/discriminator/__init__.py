@@ -1,1 +1,1 @@
-from . discriminator import Discriminator, init_discriminator
+from . utils import init_discriminator

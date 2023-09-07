@@ -14,11 +14,11 @@ def generic_meta(zoom_sampling=1.0):
     return numpy.array([
         (
             [
-                int(47*zoom_sampling), 
-                int(47*zoom_sampling), 
+                int(48*zoom_sampling), 
+                int(48*zoom_sampling), 
                 int(550*zoom_sampling), 
             ], 
-            [470., 470., 550.],
+            [480., 480., 550.],
             [-235., -235., 0])
         ],
         dtype=[
@@ -54,8 +54,7 @@ def create_larcv_interface(random_access_mode, distributed, seed):
 
     return larcv_interface
 
-def prepare_next_config(batch_size, input_file, data_args, name,
-                        is_mc = True):
+def prepare_next_config(batch_size, input_file, data_args, name, is_mc):
 
 
     # First, verify the files exist:
@@ -69,7 +68,6 @@ def prepare_next_config(batch_size, input_file, data_args, name,
     cb.set_parameter(6, "ProcessDriver", "IOManager", "Verbosity")
     cb.set_parameter(6, "ProcessDriver", "Verbosity")
     cb.set_parameter(6, "Verbosity")
-
 
 
     # Get the S2Si:
@@ -98,6 +96,7 @@ def prepare_next_config(batch_size, input_file, data_args, name,
         'S2Pmt': name + 'S2Pmt',
     }
 
+
     if is_mc:
 
         # Need to convert the clusrer3D energy deps to sparse3d first:
@@ -118,6 +117,15 @@ def prepare_next_config(batch_size, input_file, data_args, name,
             Channels  = [0]
         )
         data_keys["e_deps"] =name + "e_deps"
+    else:
+        if data_args.name == "krypton":
+            cb.add_batch_filler(
+                datatype  = "particle",
+                producer  = "event",
+                name      = name+"event",
+                MaxParticles = 1,
+            )
+            data_keys["event"] =name + "event"
 
     # Prepare data managers:
     io_config = {
@@ -174,7 +182,9 @@ def create_larcv_dataset(data_args, batch_size, batch_keys,
         input_file = input_file,
         name       = name,
         is_mc      = data_args.mc)
-
+    for key in data_keys:
+        if key not in batch_keys: batch_keys += [key,]
+        
     # Now, fire up the interface:
     prepare_interface(
         batch_size,
@@ -313,6 +323,12 @@ class larcv_dataset(object):
                     minibatch_data[key] = numpy.squeeze(minibatch_data[key], axis=1)
 
                     minibatch_data[key] = data_transforms.larcv_edeps(minibatch_data[key], generic_meta(20.))
+
+                if "event" in key:
+                    minibatch_data["e_deps"] = data_transforms.larcv_event_deps(minibatch_data[key])
+                    # exit()
+                    # Drop the 'event' piece:
+                    minibatch_data.pop(key)
 
                     # # print(minibatch_data[key].shape)
                     # # print(minibatch_data[key])
