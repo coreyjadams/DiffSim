@@ -1,7 +1,8 @@
 defaults:
   - _self_
   - base_config
-  - override mode: train_supervised
+  - mode: train_supervised
+  - override data: krypton_8677
 
 save_path: output/${run.id}/${data.name}/
 model_name: model

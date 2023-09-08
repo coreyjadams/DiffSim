@@ -7,8 +7,11 @@ from jax.example_libraries import stax
 import jax.tree_util as tree_util # for applying learning rate to gradients
 
 # This is a global variable defining the sipm locations:
-sipms_1D = np.arange(-235, 235, 10.) + 5
+# sipms_1D = np.arange(-235, 235, 10.) + 5
+sipms_1D = np.arange(-240, 240, 10.) + 5
+print(sipms_1D)
 n_sipms = sipms_1D.shape[0]
+print(n_sipms)
 sipm_locations_x = np.tile(sipms_1D, (n_sipms,)).reshape((n_sipms, n_sipms))
 sipm_locations_y = np.tile(sipms_1D, (n_sipms,)).reshape((n_sipms, n_sipms)).transpose()
 

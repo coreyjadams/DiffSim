@@ -57,7 +57,8 @@ def larcv_event_deps(input_array):
     # Split the pieces we need:
     vertex = input_array['_vtx']
     e_dep  = input_array['_energy_deposit']
-
+    # print("e_dep.shape:" , e_dep.shape)
+    # print("vertex['x'].shape:" , vertex['_x'].shape)
     return numpy.stack([vertex['_x'], vertex['_y'], vertex['_z'], e_dep], axis=-1)
 
 

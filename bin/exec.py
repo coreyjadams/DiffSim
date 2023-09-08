@@ -260,12 +260,12 @@ def main(cfg : OmegaConf) -> None:
 
 
         if MPI_AVAILABLE and size > 1:
-            logger.info("Broadcasting initial model and opt generator_state.")
+            logger.info("Broadcasting initial model and opt state.")
             from diffsim.utils.mpi import broadcast_train_state
             generator_state = broadcast_train_state(generator_state)
             if discriminator_state is not None:
                 discriminator_state = broadcast_train_state(discriminator_state)
-
+            logger.info("Done broadcasting initial model and optimizer state.")
 
 
         dl_iterable = dataloader
@@ -282,7 +282,7 @@ def main(cfg : OmegaConf) -> None:
 
         # batch = comp_data
 
-        print(comp_data["e_deps"])
+        # print(comp_data["e_deps"])
         end = None
 
         while generator_state.step < cfg.run.iterations:
@@ -295,7 +295,10 @@ def main(cfg : OmegaConf) -> None:
                 # print(sim_params)
                 if should_do_io(MPI_AVAILABLE, rank):
                     save_dir = cfg.save_path / pathlib.Path(f'comp/{generator_state.step}/')
-
+                    # jax.tree_util.tree_map( lambda x : x.shape,
+                                            # generator_state.params)
+                    print(jax.tree_util.tree_map( lambda x : x.shape,
+                                            next_rng_keys))
                     simulated_data = generator_state.apply_fn(
                         generator_state.params,
                         comp_data['e_deps'],

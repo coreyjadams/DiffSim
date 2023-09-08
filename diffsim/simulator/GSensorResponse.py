@@ -122,8 +122,16 @@ def init_gsensor_response(sensor_cfg):
     mlp, _ = init_mlp(mlp_config, nn.relu)
 
     # The sipm locations:
-    sipms_1D = numpy.arange(-235, 235, 10.) + 5
+    # sipms_1D = numpy.arange(-235, 235, 10.) + 5
+    sipms_1D = numpy.arange(-240, 240, 10.) + 5
+    # print(sipms_1D)
     n_sipms = sipms_1D.shape[0]
+    # print(n_sipms)
+
+    # sipms_1D = numpy.arange(-235, 235, 10.) + 5
+    # print(sipms_1D)
+    # n_sipms = sipms_1D.shape[0]
+    # print(n_sipms)
     sipm_locations_x = numpy.tile(sipms_1D, (n_sipms,)).reshape((n_sipms, n_sipms))
     sipm_locations_y = numpy.tile(sipms_1D, (n_sipms,)).reshape((n_sipms, n_sipms)).transpose()
 

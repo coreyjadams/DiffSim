@@ -1,4 +1,5 @@
 import sys, os
+
 import numpy
 
 import logging
@@ -97,11 +98,16 @@ def allreduce_dict(dictionary):
     return reduced_dict
 
 def broadcast_train_state(state):
+
+    import jax
+    from mpi4py import MPI
+    import mpi4jax
+
     # We have to broadcast the wavefunction parameters here:
     token = None
 
     # First, flatten the parameter trees:
-    params_flat, treedef = jax.tree_util.tree_flatten(state.params)
+    params_flat, tree_def = jax.tree_util.tree_flatten(state.params)
 
     # need to unfreeze to do this:
     for i, param in enumerate(params_flat):
@@ -132,18 +138,19 @@ def broadcast_train_state(state):
 
 
     # And the global step:
-    bcast_step, token = mpi4jax.bcast(generator_state.step,
+    bcast_step, token = mpi4jax.bcast(state.step,
                     root = 0,
                     comm = MPI.COMM_WORLD,
                     token = token)
-    logger.info("Done broadcasting initial model and optimizer generator_state.")
 
+    from flax.training import train_state
     # Finally, create an updated state:
+    print(state)
     updated_state = train_state.TrainState(
         step      = bcast_step,
-        apply_fn  = state.sim_func,
+        apply_fn  = state.apply_fn,
         params    = bcast_params,
-        tx        = state.optimizer,
+        tx        = state.tx,
         opt_state = bcast_opt_state,
     )
 

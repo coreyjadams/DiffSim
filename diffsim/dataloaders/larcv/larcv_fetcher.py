@@ -319,6 +319,7 @@ class larcv_dataset(object):
                         minibatch_data[key],
                         dense_shape = (12,550)
                     )
+                    print(minibatch_data[key].shape)
                 if "e_deps" in key:
                     minibatch_data[key] = numpy.squeeze(minibatch_data[key], axis=1)
 
@@ -328,6 +329,7 @@ class larcv_dataset(object):
                     minibatch_data["e_deps"] = data_transforms.larcv_event_deps(minibatch_data[key])
                     # exit()
                     # Drop the 'event' piece:
+                    # print(minibatch_data["e_deps"].shape)
                     minibatch_data.pop(key)
 
                     # # print(minibatch_data[key].shape)
