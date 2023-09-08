@@ -53,7 +53,7 @@ class Lifetime(nn.Module):
 
         lifetime_v = self.variable(
                 "lifetime", "lifetime",
-                lambda s : 500.0*numpy.ones(s, dtype=diffused_electrons.dtype),
+                lambda s : 100.0*numpy.ones(s, dtype=diffused_electrons.dtype),
                 (1,), # shape is scalar
             )
         lifetime = lifetime_v.value

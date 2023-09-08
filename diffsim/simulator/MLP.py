@@ -18,7 +18,7 @@ class MLP(nn.Module):
         self.layers = [
             nn.Dense(n_out,
                 use_bias = self.bias,
-                kernel_init = nn.initializers.xavier_uniform(),
+                # kernel_init = nn.initializers.xavier_uniform(),
                 # bias_init   = nn.initializers.constant(10.)
                 )
             for n_out in self.n_outputs
@@ -31,7 +31,7 @@ class MLP(nn.Module):
         for i, layer in enumerate(self.layers):
             # compute the application of the layer:
             layer_output = layer(layer_input)
-
+            # print(layer_output.shape)
             # If it's the last layer, don't apply activation if not specified:
 
             if i != len(self.layers) - 1 or self.last_activation:
@@ -42,6 +42,8 @@ class MLP(nn.Module):
 
 
         return layer_output
+    
+
 
 def init_mlp(mlp_cfg, activation):
 

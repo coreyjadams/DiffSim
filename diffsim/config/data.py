@@ -34,6 +34,8 @@ class Data:
 #     run: int  = 8677
 #     format: dataformat = dataformat.ic
 
+data_path = "/data/datasets/NEXT/NEW-simulation/kr-data/"
+
 @dataclass
 class KryptonMC(Data):
     name: str = "krypton"
@@ -45,7 +47,7 @@ class KryptonMC(Data):
 class Krypton8677(Data):
     name: str = "krypton"
     mc:  bool = False
-    path: str = "/lus/grand/projects/datascience/cadams/datasets/NEXT/new_raw_data/8677/r8677_krypton_filtered_train.h5"
+    path: str = data_path + "r8677_krypton_filtered_train.h5"
 
 cs = ConfigStore.instance()
 cs.store(group="data", name="krypton_mc", node=KryptonMC)

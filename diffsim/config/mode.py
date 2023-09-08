@@ -42,16 +42,16 @@ class TrainSupervised(TrainBase):
     optimizer:              OptimizerKind = OptimizerKind.novograd
     loss_power:             float         = 1.0
     name:                   ModeKind      = ModeKind.supervised
-    learning_rate:          float         = 0.01
-    s2pmt_scaling:          float         = 0.01
-    s2si_scaling:           float         = 10.
+    learning_rate:          float         = 0.001
+    s2pmt_scaling:          float         = 1.0
+    s2si_scaling:           float         = 10.0
 
 
 @dataclass
 class TrainUnsupervised(TrainBase):
     optimizer:              OptimizerKind = OptimizerKind.novograd
     name:                   ModeKind      = ModeKind.unsupervised
-    learning_rate:          float         = 0.01
+    learning_rate:          float         = 0.001
 
 @dataclass
 class Inference(Mode):

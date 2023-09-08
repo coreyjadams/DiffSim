@@ -319,7 +319,6 @@ class larcv_dataset(object):
                         minibatch_data[key],
                         dense_shape = (12,550)
                     )
-                    print(minibatch_data[key].shape)
                 if "e_deps" in key:
                     minibatch_data[key] = numpy.squeeze(minibatch_data[key], axis=1)
 

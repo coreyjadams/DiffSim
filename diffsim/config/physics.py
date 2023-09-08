@@ -27,7 +27,7 @@ class MLPConfig():
 
 @dataclass
 class Diffusion:
-    mlp_cfg: MLPConfig = field(default_factory = lambda : MLPConfig(layers=[16,16,16,1]) )
+    mlp_cfg: MLPConfig = field(default_factory = lambda : MLPConfig(layers=[16,1]) )
 
 @dataclass
 class Simulator:
@@ -37,7 +37,7 @@ class Simulator:
 @dataclass
 class NNSensorResponse:
     active:        bool = True
-    mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[16,16,16,16]))
+    mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[8,8,1]))
     waveform_ticks: int = 550
     bin_sigma:    float = 0.1
     n_sensors:      int = 12
@@ -45,7 +45,7 @@ class NNSensorResponse:
 @dataclass
 class SipmSensorResponse:
     active:        bool = True
-    mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[16,16,16,16]))
+    mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[16,16]))
     waveform_ticks: int = 550
     bin_sigma:    float = 0.1
 
@@ -54,7 +54,7 @@ class SipmSensorResponse:
 @dataclass
 class GSensorResponse:
     active:        bool = True
-    mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[32, 32, 1]))
+    mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[16,16,1]))
     waveform_ticks: int = 550
     bin_sigma:    float = 0.1
 

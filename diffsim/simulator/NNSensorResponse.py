@@ -7,7 +7,12 @@ import flax.linen as nn
 
 from functools import partial
 
-from .MLP import MLP, init_mlp
+from . MLP          import MLP, init_mlp
+from . ConvLocalMLP import ConvLocalMLP, init_conv_local_mlp
+
+def soft_exp(_x, a=8.):
+    return numpy.exp(a * numpy.tanh(_x / a))
+
 
 class NNSensorResponse(nn.Module):
     """
@@ -70,20 +75,25 @@ class NNSensorResponse(nn.Module):
         if self.active:
             # Put this through sigmoid to map from 0 to 1, with a floor of 0.05:
             # If the output can go to zero, it does not converge
-            sensor_probs = 0.05 + 0.95*nn.sigmoid(self.el_light_prob(simulator_input))
-            # Put this into exp to ensure >=0 and increase dynamic range.
 
+            print("simulator input size:", simulator_input.shape)
+            sensor_probs = 0.05 + 0.95*nn.sigmoid(self.el_light_prob(simulator_input))
+            # print(sensor_probs)
+            # print(sensor_probs.shape)
+            # exit()
             # We compute the log of the light response amplitude from the NN
             # Further, the assumption is that the amount of light hitting a sensor
             # Is approximately constant.  So we predict the constant + a position-
             # dependant correction
 
+            # Put this into exp to ensure >=0 and increase dynamic range.
             el_light_amp = self.el_light_amp(simulator_input)
             
             # convert to a real amplitude, >= 0
-            sensor_amp   = numpy.exp(el_light_amp + 0.1)
+            # The soft_exp function is like exp but prevents going arbitrarily high
+            el_light_amp   = 0.05 + 0.95*soft_exp(el_light_amp)
             
-            response_of_sensors = sensor_amp * sensor_probs
+            response_of_sensors = el_light_amp * sensor_probs
             
             
             waveforms = self.build_waveforms(response_of_sensors, z_positions, mask)
@@ -109,11 +119,14 @@ def init_nnsensor_response(sensor_cfg):
     mlp_config_sens = copy.copy(sensor_cfg.mlp_cfg)
     mlp_config_amp  = copy.copy(sensor_cfg.mlp_cfg)
 
-    mlp_config_sens.layers.append(sensor_cfg.n_sensors)
-    # This MLP has 12 outputs and gets put into sigmoid
+    # mlp_config_sens.layers.append(sensor_cfg.n_sensors)
+    
+    # This MLP has N outputs (1 per sensor) and gets put into sigmoid
     # It represents the probability that light from this part of the EL
-    # Hits any particular sensor.
-    mlp_sens, _ = init_mlp(mlp_config_sens, nn.relu)
+    # hits any particular sensor.
+    # It's a conv_mlp meaning 
+
+    mlp_sens, _ = init_conv_local_mlp(mlp_config_sens, sensor_cfg.n_sensors, nn.relu)
 
     # This MLP is the overall amount of light for this
     # region of the EL, and has only 1 output
@@ -123,8 +136,8 @@ def init_nnsensor_response(sensor_cfg):
 
     sr = NNSensorResponse(
         active           = sensor_cfg.active,
-        el_light_prob    = mlp_amp,
-        el_light_amp     = mlp_sens ,
+        el_light_prob    = mlp_sens,
+        el_light_amp     = mlp_amp,
         waveform_ticks   = sensor_cfg.waveform_ticks,
         bin_sigma        = sensor_cfg.bin_sigma
     )

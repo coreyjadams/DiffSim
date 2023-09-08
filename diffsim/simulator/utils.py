@@ -56,6 +56,8 @@ def init_simulator(init_key, config, example_data):
     # hooks for jax RNGs and we need to see them too
     simulator, rng_key_names = init_NEW_simulator(config.physics)
 
+
+
     # Split the input key:
     init_key, subkey = random.split(init_key)
 
@@ -65,8 +67,7 @@ def init_simulator(init_key, config, example_data):
     # Split for the next keys:
     init_key, subkey = random.split(init_key)
     next_rng_keys = update_rng_keys(subkey, rng_keys)
-
-
+    
 
     # Add a key for the weight initialization too:
     init_key, subkey = random.split(init_key)

@@ -33,7 +33,7 @@ class NEW_Simulator(nn.Module):
         diffused_xy = diffused[:,:,0:2]
         diffused_z  = diffused[:,:,2]
 
-        pmt_response = self.pmt_s2(diffused_xy, diffused_z, mask)
+        pmt_response = self.pmt_s2(diffused_xy/240., diffused_z, mask)
 
         sipm_response = self.sipm_s2(diffused_xy, diffused_z, mask)
 

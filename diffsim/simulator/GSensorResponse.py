@@ -9,6 +9,12 @@ from functools import partial, reduce
 
 from .MLP import MLP, init_mlp
 
+# @jit
+def soft_exp(_x, a=8.):
+    return numpy.exp(a * numpy.tanh(_x / a))
+
+
+
 class GSensorResponse(nn.Module):
     """
     Class to take in electrons at some locations and turn them into signals on sensors
@@ -94,7 +100,7 @@ class GSensorResponse(nn.Module):
             # at this particular point on the EL region.
             response_of_sensors = self.EL_simulator(simulator_input)
             # The exp forces it to be positive and gives a broad dynamic range:
-            response_of_sensors = numpy.exp(response_of_sensors)
+            response_of_sensors = soft_exp(response_of_sensors)
 
             waveforms = self.build_waveforms(
                 response_of_sensors, simulator_input, z_positions, mask)
