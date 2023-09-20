@@ -189,12 +189,13 @@ def main(cfg : OmegaConf) -> None:
         sim_func, sim_params, next_rng_keys = init_simulator(master_key, cfg, example_data)
 
 
-
         n_parameters = 0
         flat_params, tree_def = tree_util.tree_flatten(sim_params)
         for p in flat_params:
             n_parameters += numpy.prod(numpy.asarray(p.shape))
         logger.info(f"Number of parameters in this network: {n_parameters}")
+
+
 
         # Import the right trainer and optimizer functions based on training mode:
         if cfg.mode.name == ModeKind.supervised:
@@ -297,8 +298,8 @@ def main(cfg : OmegaConf) -> None:
                     save_dir = cfg.save_path / pathlib.Path(f'comp/{generator_state.step}/')
                     # jax.tree_util.tree_map( lambda x : x.shape,
                                             # generator_state.params)
-                    print(jax.tree_util.tree_map( lambda x : x.shape,
-                                            next_rng_keys))
+                    # print(jax.tree_util.tree_map( lambda x : x.shape,
+                                            # next_rng_keys))
                     simulated_data = generator_state.apply_fn(
                         generator_state.params,
                         comp_data['e_deps'],

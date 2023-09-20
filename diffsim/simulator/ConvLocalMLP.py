@@ -28,28 +28,26 @@ class ConvLocalMLP(nn.Module):
     @nn.compact
     def __call__(self, x):
 
-        print("Original sensor input: ", x.shape  )
 
         s = x.shape
         # Add an extra dimension before the last dimension:
         new_shape = s[:-1] + (1, s[-1])
-        print("2D shape: ", new_shape)
 
         # Put the sensors in the second to last dim:
         prob_sensor_input = numpy.repeat(x.reshape(new_shape), self.n_sensors, axis=-2)
-        print("Repeated sensor input: ", prob_sensor_input.shape  )
+        # print("Repeated sensor input: ", prob_sensor_input.shape  )
 
         layer_input =prob_sensor_input
 
         # We need to reshape the input, x, into a suitable image shape
-        print("layer_input.shape: ", layer_input.shape, flush=True)
+        # print("layer_input.shape: ", layer_input.shape, flush=True)
 
 
         # Loop over the layers
         for i, output_size in enumerate(self.n_outputs):
             # compute the application of the layer:
             layer_output = nn.ConvLocal(output_size, kernel_size=[1])(layer_input)
-            print(i, "Output shape: ", layer_output.shape, flush=True)
+            # print(i, "Output shape: ", layer_output.shape, flush=True)
             # If it's the last layer, don't apply activation if not specified:
 
             if i != len(self.n_outputs) - 1 or self.last_activation:
@@ -58,7 +56,7 @@ class ConvLocalMLP(nn.Module):
             # Prepare for the next layer:
             layer_input = layer_output
 
-        print("Output shape: ", layer_output.shape, flush=True)
+        # print("Output shape: ", layer_output.shape, flush=True)
         # Before returning, we have to remove the extra dimension:
 
         layer_output = layer_output.reshape(layer_output.shape[:-1])
