@@ -76,7 +76,6 @@ class NNSensorResponse(nn.Module):
             # Put this through sigmoid to map from 0 to 1, with a floor of 0.05:
             # If the output can go to zero, it does not converge
 
-            print("simulator input size:", simulator_input.shape)
             sensor_probs = 0.05 + 0.95*nn.sigmoid(self.el_light_prob(simulator_input))
             # print(sensor_probs)
             # print(sensor_probs.shape)

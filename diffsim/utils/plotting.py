@@ -56,8 +56,6 @@ def plot_pmts(plot_dir, sim_pmts, real_pmts):
 
         start = max(peak_tick - 50, 0)
         end = min(peak_tick + 50, 550)
-        print("start: ", start)
-        print("end: ", end)
 
         x_ticks = numpy.arange(start, end)
 
@@ -90,6 +88,17 @@ def plot_sipms(plot_dir, sim_sipms, real_sipms):
         if i_x < 0 or i_x >= 47: continue
         for i_y in [max_y -1, max_y, max_y + 1]:
             if i_y < 0 or i_y >= 47: continue
+
+            peak_tick = real_sipms[i_x][i_y].argmax()
+
+            print(f"SiPM {i_x},{i_y}")
+            print(f" - Real peak: {real_sipms[i_x][i_y][peak_tick]:.3f} at {peak_tick}")
+            print(f" - Sim value: {sim_sipms[i_x][i_y][peak_tick]:.3f} at {peak_tick}")
+            sim_peak = sim_sipms[i_x][i_y].argmax()
+            print(f" - Sim peak: {sim_sipms[i_x][i_y][sim_peak]:.3f} at {sim_peak}")
+
+            start = max(peak_tick - 50, 0)
+            end = min(peak_tick + 50, 550)
 
             # Select the up-to-100 nearest points for plotting:
             start = max(max_z - 50, 0)
