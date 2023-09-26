@@ -75,7 +75,7 @@ def close_over_training_step(config, MPI_AVAILABLE):
         # # Amplify the non-zero regions
         # weight = weight + mask #(so the weight is either 1e-4 or 1.0001)
         
-        # difference = difference * weight
+        difference = difference * weight
 
         # Next compute the log of this difference, with a baseline term to prevent
         # it from going negative:

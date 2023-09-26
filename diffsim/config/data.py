@@ -34,7 +34,8 @@ class Data:
 #     run: int  = 8677
 #     format: dataformat = dataformat.ic
 
-data_path = "/data/datasets/NEXT/NEW-simulation/kr-data/"
+data_path = "/lus/grand/projects/datascience/cadams/datasets/NEXT/new_raw_data/8677/"
+# data_path = "/data/datasets/NEXT/NEW-simulation/kr-data/"
 
 @dataclass
 class KryptonMC(Data):
@@ -50,7 +51,6 @@ class Krypton8677(Data):
     # path: str = data_path + "larcv/larcv_2125_8677_trigger1_v1.2.0_20191122_krbg_cuts.h5"
     # path: str = data_path + "larcv_merged/larcv_merged_r8677_new_kr_cuts_0.h5"
     path: str = data_path + "r8677_krypton_filtered_train.h5"
-    # path: str = 
 
 cs = ConfigStore.instance()
 cs.store(group="data", name="krypton_mc", node=KryptonMC)

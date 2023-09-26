@@ -283,7 +283,6 @@ def main(cfg : OmegaConf) -> None:
 
         # batch = comp_data
 
-        # print(comp_data["e_deps"])
         end = None
 
         while generator_state.step < cfg.run.iterations:
@@ -298,8 +297,6 @@ def main(cfg : OmegaConf) -> None:
                     save_dir = cfg.save_path / pathlib.Path(f'comp/{generator_state.step}/')
                     # jax.tree_util.tree_map( lambda x : x.shape,
                                             # generator_state.params)
-                    # print(jax.tree_util.tree_map( lambda x : x.shape,
-                                            # next_rng_keys))
                     simulated_data = generator_state.apply_fn(
                         generator_state.params,
                         comp_data['e_deps'],

@@ -20,30 +20,30 @@ NRANKS_PER_NODE=4
 
 let NRANKS=${NNODES}*${NRANKS_PER_NODE}
 
-LOCAL_BATCH_SIZE=96
+LOCAL_BATCH_SIZE=128
 let GLOBAL_BATCH_SIZE=${LOCAL_BATCH_SIZE}*${NRANKS}
 
 echo "Global batch size: ${GLOBAL_BATCH_SIZE}"
 
 # Set up software deps:
-source /lus/grand/projects/datascience/cadams/polaris-next-diffsim/set_env_polaris.sh
+source /home/cadams/Polaris/NP-with-ML/JAX_QMC_2/setup-polaris.sh
 
 # Env variables for better scaling:
 export NCCL_COLLNET_ENABLE=1
 export NCCL_NET_GDR_LEVEL=PHB
 
 
-run_id=diffSim-nonUniformZ-1
+run_id=diffSim-Sup-weight-2-$LOCAL_BATCH_SIZE
 
 CPU_AFFINITY=24-31:16-23:8-15:0-7
 export OMP_NUM_THREADS=8
 
 
-mpiexec -n ${NRANKS} -ppn ${NRANKS_PER_NODE} --cpu-bind list:${CPU_AFFINITY} \
+# mpiexec -n ${NRANKS} -ppn ${NRANKS_PER_NODE} --cpu-bind list:${CPU_AFFINITY} \
 python bin/exec.py \
---config-name krypton \
+--config-name krypton_supervised \
 run.id=${run_id} \
-mode.loss_power=2. \
 run.minibatch_size=${LOCAL_BATCH_SIZE} \
-run.iterations=20000 \
-run.distributed=True
+run.iterations=20 \
+run.image_iteration=50 \
+run.distributed=False
