@@ -56,7 +56,7 @@ class GSensorResponse:
     active:        bool = True
     mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[16,16,1]))
     waveform_ticks: int = 550
-    bin_sigma:    float = 0.1
+    bin_sigma:    float = 0.35
 
 
 

@@ -28,12 +28,11 @@ class NNSensorResponse(nn.Module):
     bin_sigma:        float
 # 
     # Functions to build waveforms based on weights and responses:
-    @partial(vmap, in_axes=[None, 0,0,0])
-    def build_waveforms(self, sensor_response, z_positions, weights):
+    @partial(vmap, in_axes=[None, 0,0])
+    def build_waveforms(self, sensor_response, z_positions):
         '''
         Compute the PMT response to electrons on the EL region
         '''
-
         n_electrons = z_positions.shape[0]
         # Build a range for the exponential input:
         starts = numpy.zeros(shape=(n_electrons)) # + 0.5
@@ -57,49 +56,54 @@ class NNSensorResponse(nn.Module):
         exp_values = numpy.exp( - (exp_input - z_positions)**2.  / (2. * self.bin_sigma**2))
 
 
-
-        # Scale by the weights:
-        exp_values = exp_values * weights
-
         # Normalize the values:
         # exp_values = exp_values.transpose()
-        exp_values = exp_values.transpose() * (0.39894228040/numpy.sqrt(self.bin_sigma**2))
+        exp_values = exp_values * (0.39894228040/numpy.sqrt(self.bin_sigma**2))
 
-
-        waveforms = numpy.matmul(exp_values, sensor_response)
-        return waveforms.transpose()
+        waveforms = numpy.matmul(sensor_response.T, exp_values)
+        return waveforms
 
     @nn.compact
     def __call__(self, simulator_input, z_positions, mask):
 
-        if self.active:
-            # Put this through sigmoid to map from 0 to 1, with a floor of 0.05:
-            # If the output can go to zero, it does not converge
+        # input shape is (i_energy_dep, i_electron, -1)
 
-            sensor_probs = 0.05 + 0.95*nn.sigmoid(self.el_light_prob(simulator_input))
-            # print(sensor_probs)
-            # print(sensor_probs.shape)
-            # exit()
-            # We compute the log of the light response amplitude from the NN
-            # Further, the assumption is that the amount of light hitting a sensor
-            # Is approximately constant.  So we predict the constant + a position-
-            # dependant correction
+        if self.active:
+
+            raw_light_prob = self.el_light_prob(simulator_input)
+            # The raw_light_prob should have the shape (N_energy_deps, N_electrons_max, n_sensors)
+
+
+            # Put this through sigmoid to map from 0 to 1
+            sensor_probs = nn.sigmoid(raw_light_prob)
 
             # Put this into exp to ensure >=0 and increase dynamic range.
             el_light_amp = self.el_light_amp(simulator_input)
             
             # convert to a real amplitude, >= 0
             # The soft_exp function is like exp but prevents going arbitrarily high
-            el_light_amp   = 0.05 + 0.95*soft_exp(el_light_amp)
+            el_light_amp   = soft_exp(el_light_amp)
             
+            # The full response of the sensors is the product:
+            # print("el_light_amp.shape: ", el_light_amp.shape)
+            # print("sensor_probs.shape: ", sensor_probs.shape)
             response_of_sensors = el_light_amp * sensor_probs
-            
-            
-            waveforms = self.build_waveforms(response_of_sensors, z_positions, mask)
-            
-            waveforms =  waveforms.sum(axis=0)
-            
+            # print("response_of_sensors: ", response_of_sensors)
+            # print("response_of_sensors.shape: ", response_of_sensors.shape)
+            # print("simulator_input.shape: ", simulator_input.shape)
+            # print("mask.shape: ", mask.shape)
 
+            # Can probably apply the mask here instead of later:
+            response_of_sensors = response_of_sensors * mask
+            # print("z_positions.shape: ", z_positions.shape)
+            # print("response_of_sensors.shape: ", response_of_sensors.shape)
+            
+            waveforms = self.build_waveforms(response_of_sensors, z_positions)
+            
+            # print(waveforms.shape)
+            waveforms =  waveforms.sum(axis=0)
+            # print(waveforms.shape)
+            
             # # The waveforms are scaled overall by a parameter:
             # waveform_scale_v = self.variable(
             #     "waveform_scale", "waveform_scale",

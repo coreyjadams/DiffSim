@@ -40,11 +40,11 @@ class TrainBase(Mode):
 @dataclass
 class TrainSupervised(TrainBase):
     optimizer:              OptimizerKind = OptimizerKind.novograd
-    loss_power:             float         = 1.0
+    loss_power:             float         = 3.0
     name:                   ModeKind      = ModeKind.supervised
-    learning_rate:          float         = 0.001
+    learning_rate:          float         = 0.01
     s2pmt_scaling:          float         = 1.0
-    s2si_scaling:           float         = 10.0
+    s2si_scaling:           float         = 0.0
 
 
 @dataclass

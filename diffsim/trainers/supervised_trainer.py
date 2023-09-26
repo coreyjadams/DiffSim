@@ -50,9 +50,12 @@ def close_over_training_step(config, MPI_AVAILABLE):
         '''
         power = config.mode.loss_power
 
+        # print("sim signals.shape: ", simulated_signals.shape)
+        # print("real signals.shape: ", real_signals.shape)
+
         # First, we compute the difference in the two signals w/ abs value:
         difference = numpy.abs(simulated_signals - real_signals)**power
-        print(difference)
+        # print("Difference shape: ", difference.shape)
         # The power is sort of like a focal term.
 
 
@@ -63,14 +66,14 @@ def close_over_training_step(config, MPI_AVAILABLE):
         # Because this data is so sparse, we multiply the difference
         # by the input data to push the loss up in important places and
         # down in unimportant places.  But, don't want the loss to be zero
-        # where the wavefunction is zero, so put a floor:
-        mask = real_signals > 0.1
-        # Cast it to floating point:
-        mask = mask.astype("float32")
-        # Here's the floor:
-        weight = 1e-4*numpy.ones(difference.shape)
-        # Amplify the non-zero regions
-        weight = weight + mask #(so the weight is either 1e-4 or 1.0001)
+        # # where the wavefunction is zero, so put a floor:
+        # mask = real_signals > 0.1
+        # # Cast it to floating point:
+        # mask = mask.astype("float32")
+        # # Here's the floor:
+        # weight = 1e-4*numpy.ones(difference.shape)
+        # # Amplify the non-zero regions
+        # weight = weight + mask #(so the weight is either 1e-4 or 1.0001)
         
         # difference = difference * weight
 
@@ -79,10 +82,15 @@ def close_over_training_step(config, MPI_AVAILABLE):
         # Why compute the log?  Because the loss is SO HIGH at the start
         # Adding 1.0 contributes nothing to the loss when the signals are equal.
         # loss = numpy.log(difference + 1.)
-        loss = numpy.abs(difference)
-        
+        # loss = numpy.abs(difference)
+        loss = difference
         # Take the sum of the difference over the last axis, the waveform:
-        loss = numpy.sum(weight*loss, axis=-1)
+        loss = numpy.sum(loss, axis=-1)
+        # print("loss shape: ", loss.shape)
+        # print(loss)
+        # print(loss.shape)
+        # print(loss)
+        # loss = numpy.sum(weight*loss, axis=-1)
         # loss = numpy.sum(loss, axis=-1) / numpy.sum(weight)
 
         # Take the mean of the loss over the sensor arrays:

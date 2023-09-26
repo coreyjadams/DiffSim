@@ -107,15 +107,15 @@ class GSensorResponse(nn.Module):
 
             waveforms = waveforms.sum(axis=0)
 
-            # The waveforms are scaled overall by a parameter _per sensor_:
-            sensor_shape = self.sensor_locations.shape[0:2]
-            waveform_scale_v = self.variable(
-                "waveform_scale", "waveform_scale",
-                lambda s : 0.1*numpy.ones(s, dtype=waveforms.dtype),
-                sensor_shape
-            )
-            waveform_scale = waveform_scale_v.value
-            waveforms = waveforms * (1. + waveform_scale.reshape(sensor_shape + (-1,)))
+            # # The waveforms are scaled overall by a parameter _per sensor_:
+            # sensor_shape = self.sensor_locations.shape[0:2]
+            # waveform_scale_v = self.variable(
+            #     "waveform_scale", "waveform_scale",
+            #     lambda s : 0.1*numpy.ones(s, dtype=waveforms.dtype),
+            #     sensor_shape
+            # )
+            # waveform_scale = waveform_scale_v.value
+            # waveforms = waveforms * (1. + waveform_scale.reshape(sensor_shape + (-1,)))
 
             return waveforms
         else:
