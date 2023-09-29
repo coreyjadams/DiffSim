@@ -67,15 +67,15 @@ def close_over_training_step(config, MPI_AVAILABLE):
         # by the input data to push the loss up in important places and
         # down in unimportant places.  But, don't want the loss to be zero
         # # where the wavefunction is zero, so put a floor:
-        # mask = real_signals > 0.1
-        # # Cast it to floating point:
-        # mask = mask.astype("float32")
-        # # Here's the floor:
-        # weight = 1e-4*numpy.ones(difference.shape)
-        # # Amplify the non-zero regions
-        # weight = weight + mask #(so the weight is either 1e-4 or 1.0001)
+        mask = real_signals > 0.1
+        # Cast it to floating point:
+        mask = mask.astype("float32")
+        # Here's the floor:
+        weight = 1e-4*numpy.ones(difference.shape)
+        # Amplify the non-zero regions
+        weight = weight + mask #(so the weight is either 1e-4 or 1.0001)
         
-        difference = difference * weight
+        # difference = difference * weight
 
         # Next compute the log of this difference, with a baseline term to prevent
         # it from going negative:

@@ -48,6 +48,7 @@ class SipmSensorResponse:
     mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[16,16]))
     waveform_ticks: int = 550
     bin_sigma:    float = 0.1
+    n_sensors:      int = 48*48
 
 
 
@@ -65,7 +66,7 @@ class NEW_Simulator(Simulator):
     detector:            str = "NEW"
     diffusion:     Diffusion = field(default_factory = lambda : Diffusion())
     pmt_s2: NNSensorResponse = field(default_factory = lambda : NNSensorResponse())
-    sipm_s2: GSensorResponse = field(default_factory = lambda : GSensorResponse())
+    sipm_s2: SipmSensorResponse = field(default_factory = lambda : SipmSensorResponse())
 
 cs = ConfigStore.instance()
 cs.store(group="physics", name="NEW", node=NEW_Simulator)

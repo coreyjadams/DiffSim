@@ -34,12 +34,11 @@ class GSensorResponse(nn.Module):
 
 
     # Functions to build waveforms based on weights and responses:
-    @partial(vmap, in_axes=[None, 0,0,0,0])
-    def build_waveforms(self, sensor_response, xy_positions, z_positions, weights):
+    @partial(vmap, in_axes=[None, 0,0,0])
+    def build_waveforms(self, sensor_response, xy_positions, z_positions):
         '''
         Compute the sensor response to electrons on the EL region, with a guassian spread
         '''
-
         sensor_shape = self.sensor_locations.shape[0:2]
         n_sensors    = reduce(lambda x, y : x*y, sensor_shape, 1)
 
@@ -53,14 +52,20 @@ class GSensorResponse(nn.Module):
 
         el_spread_v = self.variable(
                 "el_spread", "el_spread",
-                lambda s : 5.*numpy.ones(s, dtype=sensor_response.dtype),
+                lambda s : numpy.ones(s, dtype=sensor_response.dtype),
                 (1,),
             )
+
         # This actually fetches the value:
         el_spread = el_spread_v.value
-
+        # Square the variance to ensure its positive:
+        variance = el_spread**2
         # Run the subtracted values through a gaussian response:
-        sipm_spread_response = numpy.exp(-0.5*(r_squared/(el_spread)**2) )
+        sipm_spread_response = numpy.exp(-0.5*(r_squared/variance) )
+
+        # Normalize the response:
+        sipm_spread_response = sipm_spread_response * (1./(2*3.14159*variance))
+
 
 
         sensor_response = sipm_spread_response * sensor_response.reshape((-1,1,1))
@@ -70,23 +75,36 @@ class GSensorResponse(nn.Module):
         starts = numpy.zeros(shape=(n_electrons)) # + 0.5
         stops  = numpy.ones(shape=(n_electrons)) * (self.waveform_ticks -1) # + 0.5
 
+
+        bin_sigma_v = self.variable(
+                "nn_bin_sigma", "nn_bin_sigma",
+                lambda s : numpy.ones(s, dtype=z_positions.dtype),
+                (1,), # shape is scalar
+            )
+        bin_sigma = bin_sigma_v.value
+        # Square to ensure > 0:
+        bin_sigma = bin_sigma**2
+
         exp_input = numpy.linspace(start=starts, stop=stops, num=self.waveform_ticks, axis=-1)
         # I don't know why - the sipm data is shifted in Z compared to pmt
-        exp_values = numpy.exp( - (exp_input - z_positions )**2.  / (2. * self.bin_sigma))
+        exp_values = numpy.exp( - (exp_input - z_positions )**2.  / (2. * bin_sigma))
 
         # Normalize the values:
-        exp_values = exp_values.transpose() * (0.39894228040/numpy.sqrt(self.bin_sigma))
+        exp_values = exp_values * (0.39894228040/numpy.sqrt(bin_sigma))
+        # exp_values = exp_values.transpose() * (0.39894228040/numpy.sqrt(bin_sigma))
         # Scale by the weights:
-        # print(exp_values.shape)
-        # print(weights.shape)
-        exp_values = exp_values * weights.reshape(1,-1)
+
+
         # To do the matmul, we have to flatten the sensor_response briefly
         _sensor_response_flat = sensor_response.reshape((-1, n_sensors))
-        waveforms = numpy.matmul(exp_values, _sensor_response_flat)
-        # And, unflatten:
-        waveforms = waveforms.reshape((-1, *sensor_shape))
 
-        return waveforms.transpose((1,2,0))
+
+        waveforms = numpy.matmul(_sensor_response_flat.T, exp_values)
+
+        # And, unflatten:
+        waveforms = waveforms.reshape((*sensor_shape, -1))
+
+        return waveforms
 
 
 
@@ -100,12 +118,15 @@ class GSensorResponse(nn.Module):
             # at this particular point on the EL region.
             response_of_sensors = self.EL_simulator(simulator_input)
             # The exp forces it to be positive and gives a broad dynamic range:
-            response_of_sensors = soft_exp(response_of_sensors)
+            response_of_sensors = numpy.exp(response_of_sensors)
+
+            response_of_sensors = response_of_sensors * mask
 
             waveforms = self.build_waveforms(
-                response_of_sensors, simulator_input, z_positions, mask)
+                response_of_sensors, simulator_input, z_positions)
 
             waveforms = waveforms.sum(axis=0)
+
 
             # # The waveforms are scaled overall by a parameter _per sensor_:
             # sensor_shape = self.sensor_locations.shape[0:2]

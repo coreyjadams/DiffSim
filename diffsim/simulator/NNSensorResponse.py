@@ -44,21 +44,21 @@ class NNSensorResponse(nn.Module):
         exp_input = numpy.linspace(start=starts, stop=stops, num=self.waveform_ticks, axis=-1)
 
 
-        # bin_sigma_v = self.variable(
-        #         "nn_bin_sigma", "nn_bin_sigma",
-        #         lambda s : 5*numpy.ones(s, dtype=z_positions.dtype),
-        #         (1,), # shape is scalar
-        #     )
-        # bin_sigma = bin_sigma_v.value
+        bin_sigma_v = self.variable(
+                "nn_bin_sigma", "nn_bin_sigma",
+                lambda s : 5*numpy.ones(s, dtype=z_positions.dtype),
+                (1,), # shape is scalar
+            )
+        bin_sigma = bin_sigma_v.value
 
 
 
-        exp_values = numpy.exp( - (exp_input - z_positions)**2.  / (2. * self.bin_sigma**2))
+        exp_values = numpy.exp( - (exp_input - z_positions)**2.  / (2. * bin_sigma**2))
 
 
         # Normalize the values:
         # exp_values = exp_values.transpose()
-        exp_values = exp_values * (0.39894228040/numpy.sqrt(self.bin_sigma**2))
+        exp_values = exp_values * (0.39894228040/numpy.sqrt(bin_sigma**2))
 
         waveforms = numpy.matmul(sensor_response.T, exp_values)
         return waveforms
@@ -78,11 +78,11 @@ class NNSensorResponse(nn.Module):
             sensor_probs = nn.sigmoid(raw_light_prob)
 
             # Put this into exp to ensure >=0 and increase dynamic range.
-            el_light_amp = self.el_light_amp(simulator_input)
+            el_light_amp = self.el_light_amp(simulator_input) 
             
             # convert to a real amplitude, >= 0
             # The soft_exp function is like exp but prevents going arbitrarily high
-            el_light_amp   = soft_exp(el_light_amp)
+            # el_light_amp   = soft_exp(el_light_amp)
             
             # The full response of the sensors is the product:
             # print("el_light_amp.shape: ", el_light_amp.shape)
@@ -103,15 +103,7 @@ class NNSensorResponse(nn.Module):
             # print(waveforms.shape)
             waveforms =  waveforms.sum(axis=0)
             # print(waveforms.shape)
-            
-            # # The waveforms are scaled overall by a parameter:
-            # waveform_scale_v = self.variable(
-            #     "waveform_scale", "waveform_scale",
-            #     lambda s : 100.*numpy.ones(s, dtype=waveforms.dtype),
-            #     (1,), # shape is scalar
-            # )
-            # waveform_scale = waveform_scale_v.value
-            # waveforms = waveforms * waveform_scale
+  
 
             return waveforms
 

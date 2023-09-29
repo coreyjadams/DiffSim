@@ -44,13 +44,22 @@ class SipmSensorResponse(nn.Module):
 
         exp_input = numpy.linspace(start=starts, stop=stops, num=self.waveform_ticks, axis=-1)
 
-        exp_values = numpy.exp( - (exp_input - z_positions)**2.  / (2. * self.bin_sigma))
+        bin_sigma_v = self.variable(
+                "nn_bin_sigma", "nn_bin_sigma",
+                lambda s : numpy.ones(s, dtype=z_positions.dtype),
+                (1,), # shape is scalar
+            )
+        bin_sigma = bin_sigma_v.value
+        # Square to ensure > 0:
+        bin_sigma = bin_sigma**2
+
+        exp_values = numpy.exp( - (exp_input - z_positions )**2.  / (2. * bin_sigma))
 
         # Scale by the weights:
         exp_values = exp_values * weights
 
         # Normalize the values:
-        exp_values = exp_values.transpose() * (0.39894228040/numpy.sqrt(self.bin_sigma))
+        exp_values = exp_values.transpose() * (0.39894228040/numpy.sqrt(bin_sigma))
 
         waveforms = numpy.matmul(exp_values, sensor_response)
 
@@ -65,9 +74,11 @@ class SipmSensorResponse(nn.Module):
             # The sensor simulator represents the total amount of light emitted
             # at this particular point on the EL region.
             response_of_sensors = self.sensor_simulator(simulator_input)
+            
             # The exp forces it to be positive and gives a broad dynamic range:
             response_of_sensors = numpy.exp(response_of_sensors)
 
+            response_of_sensors = response_of_sensors * mask
             waveforms = self.build_waveforms(
                 response_of_sensors, z_positions, mask)
 
@@ -76,7 +87,7 @@ class SipmSensorResponse(nn.Module):
 
             # print(waveforms.shape)
             shape = waveforms.shape
-            waveforms = waveforms.reshape((47,47) + (shape[-1],))
+            waveforms = waveforms.reshape((48,48) + (shape[-1],))
 
             print(numpy.max(waveforms))
 
@@ -98,17 +109,17 @@ def init_sipm_sensor_response(sensor_cfg):
 
 
     # The sipm locations:
-    sipms_1D = numpy.arange(-235, 235, 10.) + 5
+    sipms_1D = numpy.arange(-240, 240, 10.) + 5
     n_sipms = sipms_1D.shape[0]
     sipm_locations_x = numpy.tile(sipms_1D, (n_sipms,)).reshape((n_sipms, n_sipms))
     sipm_locations_y = numpy.tile(sipms_1D, (n_sipms,)).reshape((n_sipms, n_sipms)).transpose()
 
     sipm_locations = numpy.stack([sipm_locations_y, sipm_locations_x], -1)
 
-    n_sipms = 47*47
+    n_sipms = 48*48
 
     mlp_config = sensor_cfg.mlp_cfg
-    mlp_config.layers.append(n_sipms)
+    mlp_config.layers[-1] = n_sipms
     print(mlp_config)
     mlp, _ = init_mlp(mlp_config, nn.sigmoid)
 
