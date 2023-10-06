@@ -9,7 +9,7 @@ from functools import partial, reduce
 
 from .MLP import MLP, init_mlp
 
-class SipmSensorResponse(nn.Module):
+class SipmResponse(nn.Module):
     """
     Class to take in electrons at some locations and turn them into signals on sensors
 
@@ -21,7 +21,7 @@ class SipmSensorResponse(nn.Module):
 
     """
     active:           bool
-    sensor_simulator: MLP
+    psf_fn:           MLP
     waveform_ticks:   int
     bin_sigma:        float
     sensor_locations: numpy.ndarray
@@ -29,54 +29,75 @@ class SipmSensorResponse(nn.Module):
 
     # Functions to build waveforms based on weights and responses:
     @partial(vmap, in_axes=[None, 0,0,0])
-    def build_waveforms(self, sensor_response, z_positions, weights):
+    def build_waveforms(self, emitted_photons, xy_positions, z_positions):
         '''
-        Compute the PMT response to electrons on the EL region
+        Compute the sensor response to electrons on the EL region, with a guassian spread
         '''
 
-        n_electrons = z_positions.shape[0]
-        # Build a range for the exponential input:
-        starts = numpy.zeros(shape=(n_electrons)) # + 0.5
-        stops  = numpy.ones(shape=(n_electrons)) * (self.waveform_ticks -1) # + 0.5
+        sensor_shape = self.sensor_locations.shape[0:2]
+        n_sensors    = reduce(lambda x, y : x*y, sensor_shape, 1)
 
         # Reshape z positions for broadcasting:
         z_positions = z_positions.reshape((-1,1))
+        _xy_reshaped = xy_positions.reshape((xy_positions.shape[0], 1,1,xy_positions.shape[-1]))
+
+        subtracted_values = _xy_reshaped - self.sensor_locations
+        r_squared = (subtracted_values**2).sum(-1)
+        r = numpy.sqrt(r_squared)
+
+        psf_input = numpy.stack([r_squared, r], axis=-1)
+        print("psf_input.shape: ", psf_input.shape)
+        # From r and r**2, compute the response of all sipms to each emitted photon
+        # Units of pe / photon
+
+        psf_output = nn.sigmoid(self.psf_fn(psf_input))
+        print("psf_output.shape: ", psf_output.shape)
+
+        sensor_response = emitted_photons * psf_output.reshape((-1, n_sensors))
+
+        # Build a range for the exponential input:
+        n_electrons = z_positions.shape[0]
+        starts = numpy.zeros(shape=(n_electrons)) # + 0.5
+        stops  = numpy.ones(shape=(n_electrons)) * (self.waveform_ticks -1) # + 0.5
 
         exp_input = numpy.linspace(start=starts, stop=stops, num=self.waveform_ticks, axis=-1)
-
-        exp_values = numpy.exp( - (exp_input - z_positions)**2.  / (2. * self.bin_sigma))
-
-        # Scale by the weights:
-        exp_values = exp_values * weights
+        # I don't know why - the sipm data is shifted in Z compared to pmt
+        exp_values = numpy.exp( - (exp_input - z_positions )**2.  / (2. * self.bin_sigma))
 
         # Normalize the values:
         exp_values = exp_values.transpose() * (0.39894228040/numpy.sqrt(self.bin_sigma))
-
+        # Scale by the weights:
+        # print(exp_values.shape)
+        # print(weights.shape)
+        # exp_values = exp_values * weights.reshape(1,-1)
+        # To do the matmul, we have to flatten the sensor_response briefly
         waveforms = numpy.matmul(exp_values, sensor_response)
+        # And, unflatten:
+        waveforms = waveforms.reshape((-1, *sensor_shape))
 
-        return waveforms.transpose()
-
+        return waveforms.transpose((1,2,0))
+    
 
     @nn.compact
-    def __call__(self, simulator_input, z_positions, mask):
+    def __call__(self, el_photons, xy_positions, z_positions):
 
         if self.active:
 
-            # The sensor simulator represents the total amount of light emitted
-            # at this particular point on the EL region.
-            response_of_sensors = self.sensor_simulator(simulator_input)
-            # The exp forces it to be positive and gives a broad dynamic range:
-            response_of_sensors = numpy.exp(response_of_sensors)
 
+            emitted_photons = el_photons
+
+            # Turn the photons into waveforms:
             waveforms = self.build_waveforms(
-                response_of_sensors, z_positions, mask)
+                emitted_photons, xy_positions, z_positions)
 
 
             waveforms = waveforms.sum(axis=0)
 
             # print(waveforms.shape)
             shape = waveforms.shape
-            waveforms = waveforms.reshape((47,47) + (shape[-1],))
+            sensor_shape = self.sensor_locations.shape[0:2]
+
+            waveforms = waveforms.reshape(sensor_shape + (shape[-1],))
 
             print(numpy.max(waveforms))
 
@@ -94,28 +115,28 @@ class SipmSensorResponse(nn.Module):
         else:
             return None
 
-def init_sipm_sensor_response(sensor_cfg):
+def init_sipm_response(sensor_cfg):
 
 
     # The sipm locations:
-    sipms_1D = numpy.arange(-235, 235, 10.) + 5
+    sipms_1D = numpy.arange(-240, 240, 10.) + 5
     n_sipms = sipms_1D.shape[0]
     sipm_locations_x = numpy.tile(sipms_1D, (n_sipms,)).reshape((n_sipms, n_sipms))
     sipm_locations_y = numpy.tile(sipms_1D, (n_sipms,)).reshape((n_sipms, n_sipms)).transpose()
 
     sipm_locations = numpy.stack([sipm_locations_y, sipm_locations_x], -1)
 
-    n_sipms = 47*47
 
     mlp_config = sensor_cfg.mlp_cfg
-    mlp_config.layers.append(n_sipms)
+    
+    # n_sipms = 48*48; mlp_config.layers.append(n_sipms)
     print(mlp_config)
     mlp, _ = init_mlp(mlp_config, nn.sigmoid)
 
 
-    sr = SipmSensorResponse(
+    sr = SipmResponse(
         active           = sensor_cfg.active,
-        sensor_simulator = mlp,
+        psf_fn           = mlp,
         waveform_ticks   = sensor_cfg.waveform_ticks,
         bin_sigma        = sensor_cfg.bin_sigma,
         sensor_locations = sipm_locations,

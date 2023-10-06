@@ -14,7 +14,7 @@ class ElectronGenerator:
 
 @dataclass
 class MLPConfig():
-    layers:     List[int] = field(default_factory=lambda: [16, 16, 1])
+    layers:     List[int] = field(default_factory=lambda: [8, 8, 1])
     bias:            bool = True
     last_activation: bool = False
 
@@ -45,7 +45,7 @@ class NNSensorResponse:
 @dataclass
 class SipmSensorResponse:
     active:        bool = True
-    mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[16,16]))
+    mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[8,8]))
     waveform_ticks: int = 550
     bin_sigma:    float = 0.1
 

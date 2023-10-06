@@ -34,8 +34,8 @@ class Data:
 #     run: int  = 8677
 #     format: dataformat = dataformat.ic
 
-data_path = "/lus/grand/projects/datascience/cadams/datasets/NEXT/new_raw_data/8677/"
-# data_path = "/data/datasets/NEXT/NEW-simulation/kr-data/"
+# data_path = "/lus/grand/projects/datascience/cadams/datasets/NEXT/new_raw_data/8677/"
+data_path = "/data/datasets/NEXT/NEW-simulation/kr-data/"
 
 @dataclass
 class KryptonMC(Data):

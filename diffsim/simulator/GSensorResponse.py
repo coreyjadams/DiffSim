@@ -27,7 +27,7 @@ class GSensorResponse(nn.Module):
 
     """
     active:           bool
-    EL_simulator: MLP
+    EL_simulator:     MLP
     waveform_ticks:   int
     bin_sigma:        float
     sensor_locations: numpy.ndarray

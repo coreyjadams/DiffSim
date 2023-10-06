@@ -22,8 +22,7 @@ class NNSensorResponse(nn.Module):
 
     """
     active:           bool
-    el_light_prob:    MLP # NN that simulates the probability of light from EL position hitting sensor
-    el_light_amp:     MLP # NN that simulates the amount of light from EL position overall
+    sens_response:    MLP # NN that simulates the probability of light from EL position hitting sensor
     waveform_ticks:   int
     bin_sigma:        float
 # 
@@ -64,45 +63,27 @@ class NNSensorResponse(nn.Module):
         return waveforms
 
     @nn.compact
-    def __call__(self, simulator_input, z_positions, mask):
+    def __call__(self, el_photons, xy_positions, z_positions):
 
         # input shape is (i_energy_dep, i_electron, -1)
 
         if self.active:
 
-            raw_light_prob = self.el_light_prob(simulator_input)
-            # The raw_light_prob should have the shape (N_energy_deps, N_electrons_max, n_sensors)
+            response = self.sens_response(xy_positions)
+            # The pmt_response should have the shape (N_energy_deps, N_electrons_max, n_sensors)
 
 
             # Put this through sigmoid to map from 0 to 1
-            sensor_probs = nn.sigmoid(raw_light_prob)
+            sensor_probs = nn.sigmoid(response)
 
-            # Put this into exp to ensure >=0 and increase dynamic range.
-            el_light_amp = self.el_light_amp(simulator_input)
-            
-            # convert to a real amplitude, >= 0
-            # The soft_exp function is like exp but prevents going arbitrarily high
-            el_light_amp   = soft_exp(el_light_amp)
             
             # The full response of the sensors is the product:
-            # print("el_light_amp.shape: ", el_light_amp.shape)
-            # print("sensor_probs.shape: ", sensor_probs.shape)
-            response_of_sensors = el_light_amp * sensor_probs
-            # print("response_of_sensors: ", response_of_sensors)
-            # print("response_of_sensors.shape: ", response_of_sensors.shape)
-            # print("simulator_input.shape: ", simulator_input.shape)
-            # print("mask.shape: ", mask.shape)
+            response_of_sensors = el_photons * sensor_probs
 
-            # Can probably apply the mask here instead of later:
-            response_of_sensors = response_of_sensors * mask
-            # print("z_positions.shape: ", z_positions.shape)
-            # print("response_of_sensors.shape: ", response_of_sensors.shape)
             
             waveforms = self.build_waveforms(response_of_sensors, z_positions)
             
-            # print(waveforms.shape)
             waveforms =  waveforms.sum(axis=0)
-            # print(waveforms.shape)
             
             # # The waveforms are scaled overall by a parameter:
             # waveform_scale_v = self.variable(
@@ -120,7 +101,6 @@ import copy
 def init_nnsensor_response(sensor_cfg):
 
     mlp_config_sens = copy.copy(sensor_cfg.mlp_cfg)
-    mlp_config_amp  = copy.copy(sensor_cfg.mlp_cfg)
 
     # mlp_config_sens.layers.append(sensor_cfg.n_sensors)
     
@@ -131,16 +111,11 @@ def init_nnsensor_response(sensor_cfg):
 
     mlp_sens, _ = init_conv_local_mlp(mlp_config_sens, sensor_cfg.n_sensors, nn.relu)
 
-    # This MLP is the overall amount of light for this
-    # region of the EL, and has only 1 output
-    mlp_config_amp.layers.append(1)
-    mlp_amp, _ = init_mlp(mlp_config_amp, nn.relu)
 
 
     sr = NNSensorResponse(
         active           = sensor_cfg.active,
-        el_light_prob    = mlp_sens,
-        el_light_amp     = mlp_amp,
+        sens_response    = mlp_sens,
         waveform_ticks   = sensor_cfg.waveform_ticks,
         bin_sigma        = sensor_cfg.bin_sigma
     )
