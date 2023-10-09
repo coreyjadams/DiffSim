@@ -43,21 +43,21 @@ class NNSensorResponse(nn.Module):
         exp_input = numpy.linspace(start=starts, stop=stops, num=self.waveform_ticks, axis=-1)
 
 
-        # bin_sigma_v = self.variable(
-        #         "nn_bin_sigma", "nn_bin_sigma",
-        #         lambda s : 5*numpy.ones(s, dtype=z_positions.dtype),
-        #         (1,), # shape is scalar
-        #     )
-        # bin_sigma = bin_sigma_v.value
+        bin_sigma_v = self.variable(
+                "nn_bin_sigma", "nn_bin_sigma",
+                lambda s : 5*numpy.ones(s, dtype=z_positions.dtype),
+                (1,), # shape is scalar
+            )
+        bin_sigma = bin_sigma_v.value
 
 
 
-        exp_values = numpy.exp( - (exp_input - z_positions)**2.  / (2. * self.bin_sigma**2))
+        exp_values = numpy.exp( - (exp_input - z_positions)**2.  / (2. * bin_sigma**2))
 
 
         # Normalize the values:
         # exp_values = exp_values.transpose()
-        exp_values = exp_values * (0.39894228040/numpy.sqrt(self.bin_sigma**2))
+        exp_values = exp_values * (0.39894228040/numpy.sqrt(bin_sigma**2))
 
         waveforms = numpy.matmul(sensor_response.T, exp_values)
         return waveforms
@@ -76,6 +76,15 @@ class NNSensorResponse(nn.Module):
             # Put this through sigmoid to map from 0 to 1
             sensor_probs = nn.sigmoid(response)
 
+<<<<<<< HEAD
+=======
+            # Put this into exp to ensure >=0 and increase dynamic range.
+            el_light_amp = self.el_light_amp(simulator_input) 
+            
+            # convert to a real amplitude, >= 0
+            # The soft_exp function is like exp but prevents going arbitrarily high
+            # el_light_amp   = soft_exp(el_light_amp)
+>>>>>>> ff2a36651cd1364bcf11a80f5019eb31de5c5226
             
             # The full response of the sensors is the product:
             response_of_sensors = el_photons * sensor_probs
@@ -84,6 +93,7 @@ class NNSensorResponse(nn.Module):
             waveforms = self.build_waveforms(response_of_sensors, z_positions)
             
             waveforms =  waveforms.sum(axis=0)
+<<<<<<< HEAD
             
             # # The waveforms are scaled overall by a parameter:
             # waveform_scale_v = self.variable(
@@ -93,6 +103,10 @@ class NNSensorResponse(nn.Module):
             # )
             # waveform_scale = waveform_scale_v.value
             # waveforms = waveforms * waveform_scale
+=======
+            # print(waveforms.shape)
+  
+>>>>>>> ff2a36651cd1364bcf11a80f5019eb31de5c5226
 
             return waveforms
 

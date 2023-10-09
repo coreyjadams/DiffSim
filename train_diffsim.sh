@@ -33,7 +33,7 @@ export NCCL_COLLNET_ENABLE=1
 export NCCL_NET_GDR_LEVEL=PHB
 
 
-run_id=diffSim-Sup-weight-2-$LOCAL_BATCH_SIZE
+run_id=diffSim-Sup-weight-1-$LOCAL_BATCH_SIZE
 
 CPU_AFFINITY=24-31:16-23:8-15:0-7
 export OMP_NUM_THREADS=8
@@ -44,6 +44,6 @@ python bin/exec.py \
 --config-name krypton_supervised \
 run.id=${run_id} \
 run.minibatch_size=${LOCAL_BATCH_SIZE} \
-run.iterations=20 \
+run.iterations=2000 \
 run.image_iteration=50 \
-run.distributed=False
+run.distributed=True
