@@ -54,7 +54,7 @@ class Diffusion(nn.Module):
         diffusion =  diffusion * kicks * scale
 
         # Replace the z position with the scaled z by the drift V correction:
-        electrons = electrons.at[:,3].set(z)
+        # electrons = electrons.at[:,3].set(z)
 
         return electrons + diffusion
 

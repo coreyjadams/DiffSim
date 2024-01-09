@@ -7,13 +7,9 @@ from . ElectronGenerator import ElectronGenerator, init_electron_generator
 from . Diffusion         import Diffusion,         init_diffusion
 from . Lifetime          import Lifetime,          init_lifetime
 from . NNSensorResponse  import NNSensorResponse,  init_nnsensor_response
-<<<<<<< HEAD
+from . NNSensorResponse  import NNSensorResponse,  init_nnsensor_response
 from . SipmResponse      import SipmResponse,      init_sipm_response
 # from . GSensorResponse   import GSensorResponse,   init_gsensor_response
-=======
-from . SipmResponse   import SipmSensorResponse,   init_sipm_sensor_response
-from . GSensorResponse   import GSensorResponse,   init_gsensor_response
->>>>>>> ff2a36651cd1364bcf11a80f5019eb31de5c5226
 
 class NEW_Simulator(nn.Module):
 
@@ -43,14 +39,14 @@ class NEW_Simulator(nn.Module):
 
         el_gain_v = self.variable(
                 "el_gain", "el_gain",
-                lambda s : 1e2*numpy.ones(s, dtype=diffused.dtype),
+                lambda s : 1.e1 * numpy.ones(s, dtype=diffused.dtype),
                 (1,),
             )
         # This actually fetches the value:
-        el_gain = el_gain_v.value
+        el_gain = el_gain_v.value + 1.
 
 
-        el_photons = el_gain**2*mask
+        el_photons = numpy.abs(el_gain)*mask
         # el_photons = el_gain*(1 + self.el_sim(diffused_xy) ) 
 
         # This is getting normalized to the range (-1,1):
@@ -87,12 +83,7 @@ def init_NEW_simulator(NEW_Physics):
 
 
     pmt_s2, _ = init_nnsensor_response(NEW_Physics.pmt_s2)
-<<<<<<< HEAD
     sipm_s2, _ = init_sipm_response(NEW_Physics.sipm_s2)
-=======
-    sipm_s2, _ = init_nnsensor_response(NEW_Physics.sipm_s2)
-    # sipm_s2, _ = init_sipm_sensor_response(NEW_Physics.sipm_s2)
->>>>>>> ff2a36651cd1364bcf11a80f5019eb31de5c5226
     # sipm_s2, _ = init_gsensor_response(NEW_Physics.sipm_s2)
 
     simulator = NEW_Simulator(

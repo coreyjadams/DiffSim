@@ -17,6 +17,7 @@ class OptimizerKind(Enum):
     adam     = 1
     lamb     = 3
     novograd = 4
+    sgd      = 5
 
 class Loss(Enum):
     MSE = 0
@@ -40,11 +41,11 @@ class TrainBase(Mode):
 @dataclass
 class TrainSupervised(TrainBase):
     optimizer:              OptimizerKind = OptimizerKind.novograd
-    loss_power:             float         = 4.0
+    loss_power:             float         = 2.0
     name:                   ModeKind      = ModeKind.supervised
     learning_rate:          float         = 0.001
-    s2pmt_scaling:          float         = 0.0
-    s2si_scaling:           float         = 1.0
+    s2pmt_scaling:          float         = 1.0
+    s2si_scaling:           float         = 0.0
 
 
 @dataclass

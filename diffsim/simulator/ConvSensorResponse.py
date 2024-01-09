@@ -49,7 +49,7 @@ class ConvSensorRespons(nn.Module):
 
         el_spread_v = self.variable(
                 "el_spread", "el_spread",
-                lambda s : 5.*numpy.ones(s, dtype=sensor_response.dtype),
+                lambda s : 0.1*numpy.ones(s, dtype=sensor_response.dtype),
                 (1,),
             )
         # This actually fetches the value:

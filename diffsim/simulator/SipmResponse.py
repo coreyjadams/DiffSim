@@ -45,13 +45,29 @@ class SipmResponse(nn.Module):
         r_squared = (subtracted_values**2).sum(-1)
         r = numpy.sqrt(r_squared)
 
-        psf_input = numpy.stack([r_squared, r], axis=-1)
-        print("psf_input.shape: ", psf_input.shape)
+        # psf_input = numpy.stack([r_squared, r,  1./r, 1./r_squared ], axis=-1)
+        # # print("psf_input.shape: ", psf_input.shape)
         # From r and r**2, compute the response of all sipms to each emitted photon
         # Units of pe / photon
+        baseline = numpy.exp( - 0.01*(r**2))
 
-        psf_output = nn.sigmoid(self.psf_fn(psf_input))
-        print("psf_output.shape: ", psf_output.shape)
+        r = r / 500.
+        psf_fn_output = self.psf_fn(r)
+
+        # Normalizing the point spread function with some physics-based priors:
+
+
+        amplitude_v = self.variable(
+            "amplitude", "amplitude",
+            lambda s : 1e-1*numpy.ones(s, dtype=r.dtype),
+            (1,), # shape is scalar
+        )
+        amplitude = amplitude_v.value
+
+        psf_output = amplitude * baseline * (1 + psf_fn_output)
+        # psf_output = nn.sigmoid(psf_fn_output - 0.1*r_squared.reshape(psf_fn_output.shape))
+        # print("psf_output.shape: ", psf_output.shape)
+        # print("emitted_photons.shape: ", emitted_photons.shape)
 
         sensor_response = emitted_photons * psf_output.reshape((-1, n_sensors))
 
@@ -61,37 +77,22 @@ class SipmResponse(nn.Module):
         stops  = numpy.ones(shape=(n_electrons)) * (self.waveform_ticks -1) # + 0.5
 
         exp_input = numpy.linspace(start=starts, stop=stops, num=self.waveform_ticks, axis=-1)
-<<<<<<< HEAD
-        # I don't know why - the sipm data is shifted in Z compared to pmt
+
+        # bin_sigma_v = self.variable(
+        #         "nn_bin_sigma", "nn_bin_sigma",
+        #         lambda s : 0.1*numpy.ones(s, dtype=z_positions.dtype),
+        #         (1,), # shape is scalar
+        #     )
+        # bin_sigma = bin_sigma_v.value
+
+        # Force this value to be between 0 and 1!  (With a floor at 0.05)
+        # bin_sigma = 0.05 + nn.sigmoid(self.bin_sigma)
+
         exp_values = numpy.exp( - (exp_input - z_positions )**2.  / (2. * self.bin_sigma))
 
         # Normalize the values:
         exp_values = exp_values.transpose() * (0.39894228040/numpy.sqrt(self.bin_sigma))
-        # Scale by the weights:
-        # print(exp_values.shape)
-        # print(weights.shape)
-        # exp_values = exp_values * weights.reshape(1,-1)
-        # To do the matmul, we have to flatten the sensor_response briefly
-=======
 
-        bin_sigma_v = self.variable(
-                "nn_bin_sigma", "nn_bin_sigma",
-                lambda s : numpy.ones(s, dtype=z_positions.dtype),
-                (1,), # shape is scalar
-            )
-        bin_sigma = bin_sigma_v.value
-        # Square to ensure > 0:
-        bin_sigma = bin_sigma**2
-
-        exp_values = numpy.exp( - (exp_input - z_positions )**2.  / (2. * bin_sigma))
-
-        # Scale by the weights:
-        exp_values = exp_values * weights
-
-        # Normalize the values:
-        exp_values = exp_values.transpose() * (0.39894228040/numpy.sqrt(bin_sigma))
-
->>>>>>> ff2a36651cd1364bcf11a80f5019eb31de5c5226
         waveforms = numpy.matmul(exp_values, sensor_response)
         # And, unflatten:
         waveforms = waveforms.reshape((-1, *sensor_shape))
@@ -104,21 +105,10 @@ class SipmResponse(nn.Module):
 
         if self.active:
 
-<<<<<<< HEAD
 
             emitted_photons = el_photons
 
             # Turn the photons into waveforms:
-=======
-            # The sensor simulator represents the total amount of light emitted
-            # at this particular point on the EL region.
-            response_of_sensors = self.sensor_simulator(simulator_input)
-            
-            # The exp forces it to be positive and gives a broad dynamic range:
-            response_of_sensors = numpy.exp(response_of_sensors)
-
-            response_of_sensors = response_of_sensors * mask
->>>>>>> ff2a36651cd1364bcf11a80f5019eb31de5c5226
             waveforms = self.build_waveforms(
                 emitted_photons, xy_positions, z_positions)
 
@@ -127,13 +117,9 @@ class SipmResponse(nn.Module):
 
             # print(waveforms.shape)
             shape = waveforms.shape
-<<<<<<< HEAD
             sensor_shape = self.sensor_locations.shape[0:2]
 
             waveforms = waveforms.reshape(sensor_shape + (shape[-1],))
-=======
-            waveforms = waveforms.reshape((48,48) + (shape[-1],))
->>>>>>> ff2a36651cd1364bcf11a80f5019eb31de5c5226
 
             print(numpy.max(waveforms))
 
@@ -162,18 +148,10 @@ def init_sipm_response(sensor_cfg):
 
     sipm_locations = numpy.stack([sipm_locations_y, sipm_locations_x], -1)
 
-<<<<<<< HEAD
 
     mlp_config = sensor_cfg.mlp_cfg
     
     # n_sipms = 48*48; mlp_config.layers.append(n_sipms)
-=======
-    n_sipms = 48*48
-
-    mlp_config = sensor_cfg.mlp_cfg
-    mlp_config.layers[-1] = n_sipms
->>>>>>> ff2a36651cd1364bcf11a80f5019eb31de5c5226
-    print(mlp_config)
     mlp, _ = init_mlp(mlp_config, nn.sigmoid)
 
 

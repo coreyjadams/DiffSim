@@ -145,7 +145,7 @@ def broadcast_train_state(state):
 
     from flax.training import train_state
     # Finally, create an updated state:
-    print(state)
+
     updated_state = train_state.TrainState(
         step      = bcast_step,
         apply_fn  = state.apply_fn,

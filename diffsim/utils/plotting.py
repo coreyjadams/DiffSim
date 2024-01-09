@@ -48,11 +48,11 @@ def plot_pmts(plot_dir, sim_pmts, real_pmts):
         # Find the peak of this PMT and only plot the nearby data:
         peak_tick = real_pmts[i_pmt].argmax()
 
-        print(f"PMT {i_pmt}")
-        print(f" - Real peak: {real_pmts[i_pmt][peak_tick]:.3f} at {peak_tick}")
-        print(f" - Sim value: {sim_pmts[i_pmt][peak_tick]:.3f} at {peak_tick}")
+        print(f"PMT {i_pmt}", flush=True)
+        print(f" - Real peak: {real_pmts[i_pmt][peak_tick]:.3f} at {peak_tick}", flush=True)
+        print(f" - Sim value: {sim_pmts[i_pmt][peak_tick]:.3f} at {peak_tick}", flush=True)
         sim_peak = sim_pmts[i_pmt].argmax()
-        print(f" - Sim peak: {sim_pmts[i_pmt][sim_peak]:.3f} at {sim_peak}")
+        print(f" - Sim peak: {sim_pmts[i_pmt][sim_peak]:.3f} at {sim_peak}", flush=True)
 
         start = max(peak_tick - 50, 0)
         end = min(peak_tick + 50, 550)
@@ -91,11 +91,11 @@ def plot_sipms(plot_dir, sim_sipms, real_sipms):
 
             peak_tick = real_sipms[i_x][i_y].argmax()
 
-            print(f"SiPM {i_x},{i_y}")
-            print(f" - Real peak: {real_sipms[i_x][i_y][peak_tick]:.3f} at {peak_tick}")
-            print(f" - Sim value: {sim_sipms[i_x][i_y][peak_tick]:.3f} at {peak_tick}")
+            print(f"SiPM {i_x},{i_y}", flush=True)
+            print(f" - Real peak: {real_sipms[i_x][i_y][peak_tick]:.3f} at {peak_tick}", flush=True)
+            print(f" - Sim value: {sim_sipms[i_x][i_y][peak_tick]:.3f} at {peak_tick}", flush=True)
             sim_peak = sim_sipms[i_x][i_y].argmax()
-            print(f" - Sim peak: {sim_sipms[i_x][i_y][sim_peak]:.3f} at {sim_peak}")
+            print(f" - Sim peak: {sim_sipms[i_x][i_y][sim_peak]:.3f} at {sim_peak}", flush=True)
 
             start = max(peak_tick - 50, 0)
             end = min(peak_tick + 50, 550)
@@ -107,8 +107,6 @@ def plot_sipms(plot_dir, sim_sipms, real_sipms):
             x_ticks = numpy.arange(start, end)
 
 
-            # print(sim_sipms[i_x][i_y][max_z-5:max_z+5])
-            # print(real_sipms[i_x][i_y][max_z-5:max_z+5])
 
             fig = plt.figure(figsize=(16,9))
             plt.plot(x_ticks, sim_sipms[i_x][i_y][start:end], label=f"Generated SiPM [{i_x}, {i_y}] signal")

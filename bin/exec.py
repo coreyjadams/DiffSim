@@ -27,6 +27,8 @@ os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
+os.environ['CUDA_VISIBLE_DEVICES'] = os.environ['PMI_LOCAL_RANK']
+
 import jax
 from jax import random, jit, vmap
 import jax.numpy as numpy
@@ -78,6 +80,7 @@ def update_summary_params(metrics, params):
     metrics["physics/diffusion_0"]  = params["diffusion"]["diff"]["diffusion"][0]
     metrics["physics/diffusion_1"]  = params["diffusion"]["diff"]["diffusion"][1]
     metrics["physics/diffusion_2"]  = params["diffusion"]["diff"]["diffusion"][2]
+    metrics["physics/el_gain"]      = params["el_gain"]
     # metrics["physics/el_spread"]   = params["el_spread"]["sipm_s2"]["el_spread"][0]
     metrics["physics/lifetime"]     = params["lifetime"]["lifetime"]["lifetime"][0]
     # metrics["physics/nn_bin_sigma"] = params["nn_bin_sigma"]["pmt_s2"]["nn_bin_sigma"][0]
@@ -114,7 +117,6 @@ def main(cfg : OmegaConf) -> None:
     model_name = pathlib.Path(cfg["model_name"])
 
     MPI_AVAILABLE, rank, size = init_mpi(cfg.run.distributed)
-
 
     # Here we initialize the checkpointer functions:
     if should_do_io(MPI_AVAILABLE, rank):
