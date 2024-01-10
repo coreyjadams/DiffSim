@@ -1,6 +1,6 @@
 import jax
-import logging
-from logging import handlers
+from diffsim.utils import logging
+# from logging import handlers
 import pathlib
 
 def should_do_io(_mpi_available, _rank):
@@ -30,31 +30,38 @@ def set_compute_parameters(local_rank):
 def configure_logger(save_path, MPI_AVAILABLE, rank):
 
     logger = logging.getLogger()
-
-    # Create a handler for STDOUT, but only on the root rank:
     if should_do_io(MPI_AVAILABLE, rank):
-        stream_handler = logging.StreamHandler()
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        stream_handler.setFormatter(formatter)
-        handler = handlers.MemoryHandler(capacity = 1, target=stream_handler)
-        logger.addHandler(handler)
-        # Add a file handler:
-
-        # Add a file handler too:
-        log_file = save_path / pathlib.Path("process.log")
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setFormatter(formatter)
-        file_handler = handlers.MemoryHandler(capacity=1, target=file_handler)
-        logger.addHandler(file_handler)
-
-
+        logger.setFile(str(save_path / pathlib.Path("process.log")) )
         logger.setLevel(logging.INFO)
-        # fh = logging.FileHandler('run.log')
-        # fh.setLevel(logging.DEBUG)
-        # logger.addHandler(fh)
     else:
-        # in this case, MPI is available but it's not rank 0
-        # create a null handler
-        handler = logging.NullHandler()
-        logger.addHandler(handler)
-        logger.setLevel(logging.INFO)
+        logger.setLevel(999)
+
+    # logger = logging.getLogger()
+
+    # # Create a handler for STDOUT, but only on the root rank:
+    # if should_do_io(MPI_AVAILABLE, rank):
+    #     stream_handler = logging.StreamHandler()
+    #     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    #     stream_handler.setFormatter(formatter)
+    #     handler = handlers.MemoryHandler(capacity = 1, target=stream_handler)
+    #     logger.addHandler(handler)
+    #     # Add a file handler:
+
+    #     # Add a file handler too:
+    #     log_file = save_path / pathlib.Path("process.log")
+    #     file_handler = logging.FileHandler(log_file)
+    #     file_handler.setFormatter(formatter)
+    #     file_handler = handlers.MemoryHandler(capacity=1, target=file_handler)
+    #     logger.addHandler(file_handler)
+
+
+    #     logger.setLevel(logging.INFO)
+    #     # fh = logging.FileHandler('run.log')
+    #     # fh.setLevel(logging.DEBUG)
+    #     # logger.addHandler(fh)
+    # else:
+    #     # in this case, MPI is available but it's not rank 0
+    #     # create a null handler
+    #     handler = logging.NullHandler()
+    #     logger.addHandler(handler)
+    #     logger.setLevel(logging.INFO)

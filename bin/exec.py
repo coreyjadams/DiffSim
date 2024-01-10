@@ -9,8 +9,7 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
-import logging
-from logging import handlers
+# from logging import handlers
 
 # For configuration:
 from omegaconf import DictConfig, OmegaConf
@@ -63,6 +62,7 @@ from diffsim.utils import init_mpi, discover_local_rank
 from diffsim.utils import summary, model_summary
 from diffsim.utils import init_checkpointer
 from diffsim.utils import set_compute_parameters, configure_logger, should_do_io
+from diffsim.utils import logging
 
 
 from diffsim.dataloaders import build_dataloader
