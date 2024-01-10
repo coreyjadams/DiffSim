@@ -36,16 +36,16 @@ class TrainBase(Mode):
     checkpoint_iteration:   int           = 500
     summary_iteration:      int           = 1
     logging_iteration:      int           = 1
-    weight_decay:           float         = 5e-3
+    weight_decay:           float         = 1e-3
 
 @dataclass
 class TrainSupervised(TrainBase):
-    optimizer:              OptimizerKind = OptimizerKind.novograd
+    optimizer:              OptimizerKind = OptimizerKind.lamb
     loss_power:             float         = 2.0
     name:                   ModeKind      = ModeKind.supervised
     learning_rate:          float         = 0.001
-    s2pmt_scaling:          float         = 1.0
-    s2si_scaling:           float         = 0.0
+    s2pmt_scaling:          float         = 1.e-5
+    s2si_scaling:           float         = 1e0
 
 
 @dataclass

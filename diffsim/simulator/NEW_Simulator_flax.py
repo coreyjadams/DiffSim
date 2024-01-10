@@ -38,15 +38,15 @@ class NEW_Simulator(nn.Module):
         # It's computed as a flat gain and then has some learned, local adjustment.
 
         el_gain_v = self.variable(
-                "el_gain", "el_gain",
-                lambda s : 1.e1 * numpy.ones(s, dtype=diffused.dtype),
+                "params", "el_gain",
+                lambda s : 1e-1 * numpy.ones(s, dtype=diffused.dtype),
                 (1,),
             )
         # This actually fetches the value:
-        el_gain = el_gain_v.value + 1.
+        el_gain = el_gain_v.value
 
 
-        el_photons = numpy.abs(el_gain)*mask
+        el_photons = numpy.exp(el_gain)*mask
         # el_photons = el_gain*(1 + self.el_sim(diffused_xy) ) 
 
         # This is getting normalized to the range (-1,1):

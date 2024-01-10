@@ -58,11 +58,11 @@ class SipmResponse(nn.Module):
 
 
         amplitude_v = self.variable(
-            "amplitude", "amplitude",
-            lambda s : 1e-1*numpy.ones(s, dtype=r.dtype),
+            "params", "amplitude",
+            lambda s : -1e1*numpy.ones(s, dtype=r.dtype),
             (1,), # shape is scalar
         )
-        amplitude = amplitude_v.value
+        amplitude = numpy.exp(amplitude_v.value)
 
         psf_output = amplitude * baseline * (1 + psf_fn_output)
         # psf_output = nn.sigmoid(psf_fn_output - 0.1*r_squared.reshape(psf_fn_output.shape))
@@ -121,7 +121,13 @@ class SipmResponse(nn.Module):
 
             waveforms = waveforms.reshape(sensor_shape + (shape[-1],))
 
-            print(numpy.max(waveforms))
+            # sensor_scale = self.variable(
+            #     "params", "sensor_scale",
+            #     lambda s : 1e-1*numpy.ones(s, dtype=r.dtype),
+            #     self.sensor_locations.shape, # shape is scalar
+            # )
+            # print(waveforms.shape)
+            # exit()
 
             # # The waveforms are scaled overall by a parameter _per sensor_:
             # sensor_shape = self.sensor_locations.shape[0:2]

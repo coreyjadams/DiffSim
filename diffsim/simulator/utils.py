@@ -84,6 +84,9 @@ def init_simulator(init_key, config, example_data):
     sim_params = simulator.init(rng_keys, example_data['e_deps'][0])
     sim_func   = jit(flax.linen.apply(type(simulator).__call__, simulator))
 
+    simulator_str = simulator.tabulate(rng_keys, example_data["e_deps"][0],
+        console_kwargs={"width":160}, depth=3)
+
     # print(example_data.keys(), flush=True)
     # print(example_data["S2Si"].shape, flush=True)
     # exit()
@@ -95,4 +98,4 @@ def init_simulator(init_key, config, example_data):
     
     # test_output = sim_func(sim_params, example_data['e_deps'], rngs=multi_rngs)
 
-    return sim_func, sim_params, multi_rngs
+    return sim_func, sim_params, multi_rngs, simulator_str

@@ -44,12 +44,12 @@ class Diffusion(nn.Module):
         # Get the diffusion variable:
         is_initialized = self.has_variable("diffusion", "diffusion")
         diffusion_v = self.variable(
-                "diffusion", "diffusion",
+                "params", "diffusion",
                 lambda s : .1*numpy.ones(s, dtype=electrons.dtype),
                 electrons[0].shape
             )
         # This actually fetches the value:
-        diffusion = diffusion_v.value
+        diffusion = diffusion_v.value 
         # Apply it as a correction that is proportional to sqrt(z) but has a normal component too
         diffusion =  diffusion * kicks * scale
 

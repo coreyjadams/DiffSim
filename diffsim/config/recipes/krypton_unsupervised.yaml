@@ -8,4 +8,4 @@ save_path: output/${run.id}/${data.name}/
 model_name: model
 
 mode:
-  optimizer: novograd
+  optimizer: lamb

@@ -293,27 +293,27 @@ def main(cfg : OmegaConf) -> None:
             if not active: break
 
 
-            # # Add comparison plots every N iterations
-            # if generator_state.step % cfg.run.image_iteration == 0:
-            #     if should_do_io(MPI_AVAILABLE, rank):
-            #         save_dir = cfg.save_path / pathlib.Path(f'comp/{generator_state.step}/')
-            #         # jax.tree_util.tree_map( lambda x : x.shape,
-            #                                 # generator_state.params)
-            #         simulated_data = generator_state.apply_fn(
-            #             generator_state.params,
-            #             comp_data['e_deps'],
-            #             rngs=next_rng_keys
-            #         )
+            # Add comparison plots every N iterations
+            if generator_state.step % cfg.run.image_iteration == 0:
+                if should_do_io(MPI_AVAILABLE, rank):
+                    save_dir = cfg.save_path / pathlib.Path(f'comp/{generator_state.step}/')
+                    # jax.tree_util.tree_map( lambda x : x.shape,
+                                            # generator_state.params)
+                    simulated_data = generator_state.apply_fn(
+                        generator_state.params,
+                        comp_data['e_deps'],
+                        rngs=next_rng_keys
+                    )
 
 
-            #         # Remove the prefactor on simulated data for this:
-            #         # It's not applied to the comp data, but we have to scale up the output
-            #         # according to the prefactor
-            #         for key in simulated_data.keys():
-            #             if key in prefactor.keys():
-            #                 simulated_data[key] = simulated_data[key] / prefactor[key]
+                    # Remove the prefactor on simulated data for this:
+                    # It's not applied to the comp data, but we have to scale up the output
+                    # according to the prefactor
+                    for key in simulated_data.keys():
+                        if key in prefactor.keys():
+                            simulated_data[key] = simulated_data[key] / prefactor[key]
 
-            #         comparison_plots(save_dir, simulated_data, comp_data)
+                    comparison_plots(save_dir, simulated_data, comp_data)
 
 
 

@@ -16,19 +16,23 @@ def init_discriminator(init_key, config, example_data):
 
     disc = init_discriminator_model()
 
-    d_params = disc.init(init_key, 
-        {
+    example_inputs = {
             "S2Si": example_data["S2Si"][0],
             "S2Pmt": example_data["S2Pmt"][0],
         }
-    )
+
+    d_params = disc.init(init_key, example_inputs)
+
+    disc_example = disc.apply(d_params, example_inputs)
 
     disc_fn = jit(vmap(disc.apply, in_axes= (None, 0,)))
 
-
+    d_str = disc.tabulate(init_key,
+        example_inputs,
+        console_kwargs={"width":160}, depth=3)
     # Initialize the simulator object, which has a number of 
     # hooks for jax RNGs and we need to see them too
 
     # Initialize the parameters:
 
-    return disc_fn, d_params
+    return disc_fn, d_params, d_str

@@ -52,7 +52,7 @@ class Lifetime(nn.Module):
         # applied, so it's not stochastic but works on the ensemble only.
 
         lifetime_v = self.variable(
-                "lifetime", "lifetime",
+                "params", "lifetime",
                 lambda s : 100.0*numpy.ones(s, dtype=diffused_electrons.dtype),
                 (1,), # shape is scalar
             )

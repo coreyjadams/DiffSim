@@ -43,7 +43,7 @@ def build_optimizer(config, params):
 # def close_over_training_step(config, MPI_AVAILABLE, sim_func, optimizer):
 def close_over_training_step(config, MPI_AVAILABLE):
 
-    @jit
+    # @jit
     def train_one_step(generator_state, discriminator_state, batch, rng_seeds):
 
         # This is like a GAN-style loop, except  the generator 
@@ -59,8 +59,6 @@ def close_over_training_step(config, MPI_AVAILABLE):
         # - Apply the updates and return
 
 
-        # pritn(state)
-
         def g_loss_fn(g_params):
 
             # Generate signals:
@@ -69,6 +67,7 @@ def close_over_training_step(config, MPI_AVAILABLE):
                     batch['e_deps'],
                     rngs=rng_seeds
                 )
+            # Discriminate against the generated signals:
             discriminated_gen = discriminator_state.apply_fn(
                 discriminator_state.params,
                 simulated_waveforms
@@ -76,13 +75,15 @@ def close_over_training_step(config, MPI_AVAILABLE):
 
             # We try to get the generator close to 1.0 from the discriminator:
             g_loss = numpy.mean(optax.sigmoid_binary_cross_entropy(
-                numpy.ones_like(discriminated_gen), 
-                nn.sigmoid(discriminated_gen)
+                logits = discriminated_gen,
+                labels = numpy.ones_like(discriminated_gen), 
             ))
+            # g_loss = - numpy.mean(numpy.log(nn.sigmoid(discriminated_gen)))
+
             metrics = {
-                "acc/gen" : numpy.mean(discriminated_gen > 0.5),
+                "acc/gen"  : numpy.mean(discriminated_gen > 0.5),
                 "loss/gen" : g_loss,
-                "Mean/g-r": numpy.mean(discriminated_gen)
+                "Mean/g-r" : numpy.mean(discriminated_gen)
             }
 
             return g_loss, metrics
@@ -100,7 +101,7 @@ def close_over_training_step(config, MPI_AVAILABLE):
                     rngs=rng_seeds
                 )
             
-
+            # Discriminate on the real signals:
             discriminated_real = discriminator_state.apply_fn(
                 d_params,
                 {"S2Si"  : batch["S2Si"], 
@@ -108,27 +109,35 @@ def close_over_training_step(config, MPI_AVAILABLE):
                 }
             )
             
-
+            # discriminate on the generated signals:
             discriminated_gen = discriminator_state.apply_fn(
                 d_params,
                 simulated_waveforms
             )
+
+            # Smooth the labels:
             alpha = 0.9
             smooth_ones_labels = alpha     * numpy.ones_like(discriminated_gen)
             smooth_zero_labels = (1-alpha) * numpy.ones_like(discriminated_gen)
 
+
             # print(discriminated_real)
             # print(discriminated_gen)
             # We want the discriminator to be correct, but with smooth 
-            # labels so it doesn't get too confident:
+            # labels so it doesn't get too confident.
+
+            # Discriminator is putting the real labels close to 1.0:
             d_loss_real = numpy.mean(optax.sigmoid_binary_cross_entropy(
-                smooth_ones_labels,
-                nn.sigmoid(discriminated_real)
+                logits = discriminated_real,
+                labels = smooth_ones_labels,
             ))
+
+            # And the fake labels close to 0:
             d_loss_gen = numpy.mean(optax.sigmoid_binary_cross_entropy(
-                smooth_zero_labels,
-                nn.sigmoid(discriminated_gen)
+                logits = discriminated_gen,
+                labels = smooth_zero_labels,
             ))
+
 
 
             metrics = {
@@ -142,11 +151,12 @@ def close_over_training_step(config, MPI_AVAILABLE):
             # print(d_loss_real.shape)
             # print(d_loss_gen.shape)
 
-            return d_loss_real + d_loss_gen, metrics
+            return d_loss_gen, metrics
+            # return d_loss_real + d_loss_gen, metrics
 
 
         d_grad_fn = jax.value_and_grad(d_loss_fn, has_aux=True)
-        g_grad_fn = jax.value_and_grad(g_loss_fn,     has_aux=True)
+        g_grad_fn = jax.value_and_grad(g_loss_fn, has_aux=True)
 
         # First, do the discriminator:
         (d_loss, d_metrics), d_grads = d_grad_fn(discriminator_state.params)
