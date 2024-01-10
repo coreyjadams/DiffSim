@@ -27,7 +27,10 @@ os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
-os.environ['CUDA_VISIBLE_DEVICES'] = os.environ['PMI_LOCAL_RANK']
+try:
+    os.environ['CUDA_VISIBLE_DEVICES'] = os.environ['PMI_LOCAL_RANK']
+except:
+    pass
 
 import jax
 from jax import random, jit, vmap
@@ -75,14 +78,13 @@ def interupt_handler( sig, frame):
 
 @jit
 def update_summary_params(metrics, params):
-    # print(params["params"].keys())
     # Add the diffusion:
-    metrics["physics/diffusion_0"]  = params["diffusion"]["diff"]["diffusion"][0]
-    metrics["physics/diffusion_1"]  = params["diffusion"]["diff"]["diffusion"][1]
-    metrics["physics/diffusion_2"]  = params["diffusion"]["diff"]["diffusion"][2]
-    metrics["physics/el_gain"]      = params["el_gain"]
+    metrics["physics/diffusion_0"]  = params["params"]["diff"]["diffusion"][0]
+    metrics["physics/diffusion_1"]  = params["params"]["diff"]["diffusion"][1]
+    metrics["physics/diffusion_2"]  = params["params"]["diff"]["diffusion"][2]
+    metrics["physics/el_gain"]      = params["params"]["el_gain"][0]
     # metrics["physics/el_spread"]   = params["el_spread"]["sipm_s2"]["el_spread"][0]
-    metrics["physics/lifetime"]     = params["lifetime"]["lifetime"]["lifetime"][0]
+    metrics["physics/lifetime"]     = params["params"]["lifetime"]["lifetime"][0]
     # metrics["physics/nn_bin_sigma"] = params["nn_bin_sigma"]["pmt_s2"]["nn_bin_sigma"][0]
 
     return metrics
@@ -186,10 +188,10 @@ def main(cfg : OmegaConf) -> None:
 
         # Initialize the model:
         example_data = next(dataloader)
-        # print([example_data[key].shape for key in example_data.keys()])
-        # print([numpy.max(example_data[key]) for key in example_data.keys()])
-        sim_func, sim_params, next_rng_keys = init_simulator(master_key, cfg, example_data)
+        sim_func, sim_params, next_rng_keys, simulator_str = init_simulator(master_key, cfg, example_data)
 
+
+        logger.info(simulator_str)
 
         n_parameters = 0
         flat_params, tree_def = tree_util.tree_flatten(sim_params)
@@ -204,8 +206,9 @@ def main(cfg : OmegaConf) -> None:
             from diffsim.trainers.supervised_trainer import build_optimizer, close_over_training_step
         elif cfg.mode.name == ModeKind.unsupervised:
             from diffsim.discriminator import init_discriminator
-            disc_func, disc_params = init_discriminator(master_key, cfg, example_data)
+            disc_func, disc_params, d_str = init_discriminator(master_key, cfg, example_data)
             from diffsim.trainers.unsupervised_trainer import build_optimizer, close_over_training_step
+            logger.info(d_str)
 
         optimizer, opt_state = build_optimizer(cfg, sim_params)
 
@@ -249,8 +252,6 @@ def main(cfg : OmegaConf) -> None:
         # Restore the weights
 
         if should_do_io(MPI_AVAILABLE, rank):
-            # print(generator_state)
-            # print(discriminator_state)
             r_state, r_disc_state = restore_weights(generator_state, discriminator_state)
 
             if r_state is not None:
@@ -283,7 +284,7 @@ def main(cfg : OmegaConf) -> None:
         #     if key in prefactor.keys():
         #         comp_data[key] = prefactor[key]*comp_data[key]
 
-        # batch = comp_data
+
 
         end = None
 
@@ -292,28 +293,27 @@ def main(cfg : OmegaConf) -> None:
             if not active: break
 
 
-            # Add comparison plots every N iterations
-            if generator_state.step % cfg.run.image_iteration == 0:
-                # print(sim_params)
-                if should_do_io(MPI_AVAILABLE, rank):
-                    save_dir = cfg.save_path / pathlib.Path(f'comp/{generator_state.step}/')
-                    # jax.tree_util.tree_map( lambda x : x.shape,
-                                            # generator_state.params)
-                    simulated_data = generator_state.apply_fn(
-                        generator_state.params,
-                        comp_data['e_deps'],
-                        rngs=next_rng_keys
-                    )
+            # # Add comparison plots every N iterations
+            # if generator_state.step % cfg.run.image_iteration == 0:
+            #     if should_do_io(MPI_AVAILABLE, rank):
+            #         save_dir = cfg.save_path / pathlib.Path(f'comp/{generator_state.step}/')
+            #         # jax.tree_util.tree_map( lambda x : x.shape,
+            #                                 # generator_state.params)
+            #         simulated_data = generator_state.apply_fn(
+            #             generator_state.params,
+            #             comp_data['e_deps'],
+            #             rngs=next_rng_keys
+            #         )
 
 
-                    # Remove the prefactor on simulated data for this:
-                    # It's not applied to the comp data, but we have to scale up the output
-                    # according to the prefactor
-                    for key in simulated_data.keys():
-                        if key in prefactor.keys():
-                            simulated_data[key] = simulated_data[key] / prefactor[key]
+            #         # Remove the prefactor on simulated data for this:
+            #         # It's not applied to the comp data, but we have to scale up the output
+            #         # according to the prefactor
+            #         for key in simulated_data.keys():
+            #             if key in prefactor.keys():
+            #                 simulated_data[key] = simulated_data[key] / prefactor[key]
 
-                    comparison_plots(save_dir, simulated_data, comp_data)
+            #         comparison_plots(save_dir, simulated_data, comp_data)
 
 
 
