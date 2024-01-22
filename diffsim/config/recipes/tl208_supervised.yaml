@@ -2,7 +2,7 @@ defaults:
   - _self_
   - base_config
   - mode: train_supervised
-  - override data: krypton_8677
+  - override data: tl208_mc
 
 save_path: output/${run.id}/${data.name}/
 model_name: model

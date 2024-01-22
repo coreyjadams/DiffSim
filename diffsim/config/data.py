@@ -20,9 +20,8 @@ class Data:
     train:       str = ""
     test:        str = ""
     val:         str = ""
+    image_key:   str = ""
     active: Tuple[str] = field(default_factory=list)
-    transform1: bool = True
-    transform2: bool = True
 
 
 # @dataclass
@@ -34,24 +33,33 @@ class Data:
 #     run: int  = 8677
 #     format: dataformat = dataformat.ic
 
-data_path = "/lus/grand/projects/datascience/cadams/datasets/NEXT/new_raw_data/8677/"
-# data_path = "/data/datasets/NEXT/NEW-simulation/kr-data/"
+# data_path = "/lus/grand/projects/datascience/cadams/datasets/NEXT/new_raw_data/8677/"
+data_path = "/data/datasets/NEXT/NEW-simulation/kr-data/"
 
 @dataclass
 class KryptonMC(Data):
     name: str = "krypton"
     mc:  bool = True
-    path: str = "/data/datasets/NEXT/NEW-simulation/Kr/r0/r0_larcv_cuts.r0_merged.h5"
+    path: str = "/data/datasets/NEXT/NEW-simulNeation/Kr/r0/r0_larcv_cuts.r0_merged.h5"
+    image_key: str = "S2Si"
 
 
 @dataclass
 class Krypton8677(Data):
     name: str = "krypton"
     mc:  bool = False
-    # path: str = data_path + "larcv/larcv_2125_8677_trigger1_v1.2.0_20191122_krbg_cuts.h5"
-    # path: str = data_path + "larcv_merged/larcv_merged_r8677_new_kr_cuts_0.h5"
     path: str = data_path + "r8677_krypton_filtered_train.h5"
+    image_key: str = "S2Si"
+
+@dataclass
+class Tl208MC(Data):
+    name: str = "tl208"
+    mc:  bool = True
+    path: str = "/data/datasets/NEXT/NEW-simulation/tl208/r0/r0_larcv_all.r0_merged.h5"
+    image_key: str = "S2Si"
+    deps_key: str  = "mchits"
 
 cs = ConfigStore.instance()
-cs.store(group="data", name="krypton_mc", node=KryptonMC)
+cs.store(group="data", name="krypton_mc",   node=KryptonMC)
 cs.store(group="data", name="krypton_8677", node=Krypton8677)
+cs.store(group="data", name="tl208_mc",     node=Tl208MC)

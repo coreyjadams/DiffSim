@@ -410,10 +410,6 @@ def iotest(dataloader, config):
 
     logger = logging.getLogger()
 
-
-    # Before beginning the loop, manually flush the buffer:
-    logger.handlers[0].flush()
-
     global active
     active = True
 

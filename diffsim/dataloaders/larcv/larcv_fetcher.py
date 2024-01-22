@@ -69,18 +69,19 @@ def prepare_next_config(batch_size, input_file, data_args, name, is_mc):
     cb.set_parameter(6, "ProcessDriver", "Verbosity")
     cb.set_parameter(6, "Verbosity")
 
+    print(data_args)
 
     # Get the S2Si:
     cb.add_batch_filler(
         datatype  = "sparse3d",
-        producer  = "S2Si",
+        producer  = data_args.image_key,
         name      = name+"S2Si",
         MaxVoxels = 3000,
         Augment   = False,
         Channels  = [0]
     )
 
-    # Get the S2Si:
+    # Get the PMTs if available:
     cb.add_batch_filler(
         datatype  = "sparse2d",
         producer  = "S2Pmt",
@@ -111,7 +112,7 @@ def prepare_next_config(batch_size, input_file, data_args, name, is_mc):
             datatype  = "sparse3d",
             producer  = "e_deps",
             name      = name+"e_deps",
-            MaxVoxels = 10,
+            MaxVoxels = 500,
             UnfilledVoxelValue = 0.0,
             Augment   = False,
             Channels  = [0]
