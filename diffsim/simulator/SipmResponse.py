@@ -112,18 +112,21 @@ class SipmResponse(nn.Module):
 
             emitted_photons = el_photons
 
+            # This chunk of code slices the electrons into chunks
+            # And applies them sequentially, summing over the outputs,
+            # to get to the end:
+
             # Turn the photons into waveforms:
             waveforms = self.build_waveforms(
                 emitted_photons, xy_positions, z_positions)
 
+            # print("SIPM waveroms.shape: ", waveforms.shape)
 
-            waveforms = waveforms.sum(axis=0)
+            # # print(waveforms.shape)
+            # shape = waveforms.shape
+            # sensor_shape = self.sensor_locations.shape[0:2]
 
-            # print(waveforms.shape)
-            shape = waveforms.shape
-            sensor_shape = self.sensor_locations.shape[0:2]
-
-            waveforms = waveforms.reshape(sensor_shape + (shape[-1],))
+            # waveforms = waveforms.reshape(sensor_shape + (shape[-1],))
 
             # sensor_scale = self.variable(
             #     "params", "sensor_scale",
