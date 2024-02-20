@@ -84,7 +84,7 @@ def update_summary_params(metrics, params):
     metrics["physics/diffusion_2"]  = params["params"]["diff"]["diffusion"][2]
     metrics["physics/el_gain"]      = params["params"]["el_gain"][0]
     # metrics["physics/el_spread"]   = params["el_spread"]["sipm_s2"]["el_spread"][0]
-    metrics["physics/lifetime"]     = params["params"]["lifetime"]["lifetime"][0]
+    # metrics["physics/lifetime"]     = params["params"]["lifetime"]["lifetime"][0]
     # metrics["physics/nn_bin_sigma"] = params["nn_bin_sigma"]["pmt_s2"]["nn_bin_sigma"][0]
 
     return metrics
