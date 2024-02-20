@@ -27,11 +27,16 @@ class NNSensorResponse(nn.Module):
     bin_sigma:        float
 # 
     # Functions to build waveforms based on weights and responses:
-    @partial(vmap, in_axes=[None, 0,0])
+    # @partial(vmap, in_axes=[None, 0,0])
     def build_waveforms(self, sensor_response, z_positions):
         '''
         Compute the PMT response to electrons on the EL region
+
+        This function operates on a single electron!
+
         '''
+        # print("sensor_response.shape: ", sensor_response.shape)
+        # print("z_positions.shape: ", z_positions.shape)
         n_electrons = z_positions.shape[0]
         # Build a range for the exponential input:
         starts = numpy.zeros(shape=(n_electrons)) # + 0.5
@@ -41,7 +46,7 @@ class NNSensorResponse(nn.Module):
         z_positions = z_positions.reshape((-1,1))
 
         exp_input = numpy.linspace(start=starts, stop=stops, num=self.waveform_ticks, axis=-1)
-
+        # print("exp_input.shape: ", exp_input.shape)
 
         # bin_sigma_v = self.variable(
         #         "nn_bin_sigma", "nn_bin_sigma",
@@ -56,7 +61,7 @@ class NNSensorResponse(nn.Module):
         bin_sigma = self.bin_sigma
 
         exp_values = numpy.exp( - (exp_input - z_positions)**2.  / (2. * bin_sigma**2))
-
+        # print("exp_values.shape: ", exp_values.shape)
 
         # Normalize the values:
         # exp_values = exp_values.transpose()
@@ -64,6 +69,53 @@ class NNSensorResponse(nn.Module):
 
         waveforms = numpy.matmul(sensor_response.T, exp_values)
         return waveforms
+    
+
+    # # Functions to build waveforms based on weights and responses:
+    # # @partial(vmap, in_axes=[None, 0,0])
+    # def build_waveforms(self, sensor_responses, z_position):
+    #     '''
+    #     Compute the PMT response to electrons on the EL region
+
+    #     This function operates on a single electron and all sensors
+
+    #     '''
+    #     print("sensor_response.shape: ", sensor_response.shape)
+    #     print("z_positions.shape: ", z_positions.shape)
+
+    #     n_sensors = 
+    #     # # Build a range for the exponential input:
+    #     starts = numpy.zeros(shape=(n_electrons)) # + 0.5
+    #     # stops  = numpy.ones(shape=(n_electrons)) * (self.waveform_ticks -1) # + 0.5
+
+    #     # # Reshape z positions for broadcasting:
+    #     # z_positions = z_positions.reshape((-1,1))
+
+    #     # exp_input = numpy.linspace(start=starts, stop=stops, num=self.waveform_ticks, axis=-1)
+
+    #     exp_input = numpy.linspace(start=starts, stop=stops, num=self.waveform_ticks, axis=-1)
+
+    #     # bin_sigma_v = self.variable(
+    #     #         "nn_bin_sigma", "nn_bin_sigma",
+    #     #         lambda s : 0.1*numpy.ones(s, dtype=z_positions.dtype),
+    #     #         (1,), # shape is scalar
+    #     #     )
+    #     # bin_sigma = bin_sigma_v.value
+
+    #     # # Force this value to be between 0 and 1!  (With a floor at 0.05)
+    #     # bin_sigma = 0.05 + nn.sigmoid(bin_sigma)
+
+    #     bin_sigma = self.bin_sigma
+
+    #     exp_values = numpy.exp( - (exp_input - z_positions)**2.  / (2. * bin_sigma**2))
+
+
+    #     # Normalize the values:
+    #     # exp_values = exp_values.transpose()
+    #     exp_values = exp_values * (0.39894228040/numpy.sqrt(bin_sigma**2))
+
+    #     waveforms = numpy.matmul(sensor_response.T, exp_values)
+    #     return waveforms
 
     @nn.compact
     def __call__(self, el_photons, xy_positions, z_positions):
@@ -73,6 +125,8 @@ class NNSensorResponse(nn.Module):
         if self.active:
 
             response = self.sens_response(xy_positions)
+            print("el_photons.shape: ", el_photons.shape)
+            print("response.shape: ", response.shape)
             # The pmt_response should have the shape (N_energy_deps, N_electrons_max, n_sensors)
 
 
@@ -86,7 +140,9 @@ class NNSensorResponse(nn.Module):
             
             waveforms = self.build_waveforms(response_of_sensors, z_positions)
             
-            waveforms =  waveforms.sum(axis=0)
+            print("waveforms.shape: ", waveforms.shape)
+
+            # waveforms =  waveforms.sum(axis=0)
             
             # # The waveforms are scaled overall by a parameter:
             # waveform_scale_v = self.variable(
