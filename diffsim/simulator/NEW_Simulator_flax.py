@@ -24,7 +24,6 @@ class NEW_Simulator(nn.Module):
 
         electrons, n_electrons = self.eg(energies_and_positions)
 
-
         diffused = self.diff(electrons)
 
         mask = self.lifetime(diffused, n_electrons)
@@ -43,7 +42,7 @@ class NEW_Simulator(nn.Module):
                 (1,),
             )
         # This actually fetches the value:
-        el_gain = el_gain_v.value
+        el_gain = (el_gain_v.value)**2
 
 
         el_photons = numpy.exp(el_gain)*mask
