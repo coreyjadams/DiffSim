@@ -43,8 +43,8 @@ def load_balance_electrons(electrons, n_electrons, M : int = 100000):
 
     output_electrons = numpy.zeros((M, 3))
     
-    non_zero = numpy.argwhere(n_electrons)
-    N_deps   = non_zero[-1][0]
+    # non_zero = numpy.argwhere(n_electrons)
+    # N_deps   = non_zero[-1][0]
 
     output_electrons = lax.fori_loop(
         lower = 0,
@@ -54,8 +54,10 @@ def load_balance_electrons(electrons, n_electrons, M : int = 100000):
     )
 
     mask = numpy.zeros((M,))
+    index = numpy.arange(M)
     N = numpy.sum(n_electrons)
-    mask = mask.at[0:N].set(1.0)
+    mask = numpy.where(index < N, 1.0, 0.0)
+    # mask = mask.at[0:N].set(1.0)
 
 
 
