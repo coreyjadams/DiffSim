@@ -24,14 +24,14 @@ class Diffusion(nn.Module):
     @partial(vmap, in_axes=[None, 0,0])
     def diffuse_electrons(self, electrons, kicks):
         '''
-        Apply diffusion to a single energy deposition (shape of [N, 3])
+        Apply diffusion to a single electron (shape of [3])
         '''
-
+        print(electrons.shape)
 
         # Diffusion is proportional to the sqrt of Z:
-        z = electrons[:,3]
+        z = electrons[2]
         # The absolute scale of diffusion depends on the Z location:
-        scale = numpy.sqrt(z).reshape((-1,1))
+        scale = numpy.sqrt(z)
 
         # # Assuming the drift velocity might not be constant over the whole range:
         # drift_velocity_correction = self.drift_velocity(z.reshape(-1,1)).reshape(z.shape)
@@ -46,7 +46,7 @@ class Diffusion(nn.Module):
         diffusion_v = self.variable(
                 "params", "diffusion",
                 lambda s : .1*numpy.ones(s, dtype=electrons.dtype),
-                electrons[0].shape
+                electrons.shape
             )
         # This actually fetches the value:
         diffusion = diffusion_v.value 

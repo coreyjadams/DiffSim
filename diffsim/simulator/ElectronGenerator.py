@@ -2,6 +2,8 @@ import jax.numpy as numpy
 import jax.random as random
 from jax import vmap
 
+from jax.experimental import sparse as jsparse
+
 from dataclasses import dataclass
 import flax.linen as nn
 
@@ -20,6 +22,7 @@ class ElectronGenerator(nn.Module):
     p1: float
     p2: float
     n_max: int
+
 
     @partial(vmap, in_axes=[None, 0, 0])
     def energy_to_electrons(self, energy, normal_draw):
@@ -51,6 +54,7 @@ class ElectronGenerator(nn.Module):
         shape = (self.n_max, 3) # x/y/z per electron
         return numpy.broadcast_to(position, shape)
 
+
     @nn.compact
     def __call__(self, energies_and_positions):
         """
@@ -72,7 +76,10 @@ class ElectronGenerator(nn.Module):
 
         broadcasted_electrons = self.broadcast_electron(positions)
 
+        # sparse_electrons = jsparse.BCOO.fromdense(broadcasted_electrons)
+
         return broadcasted_electrons, n_electrons
+        return sparse_electrons, n_electrons
 
 
 

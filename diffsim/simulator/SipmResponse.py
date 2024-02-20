@@ -28,11 +28,15 @@ class SipmResponse(nn.Module):
 
 
     # Functions to build waveforms based on weights and responses:
-    @partial(vmap, in_axes=[None, 0,0,0])
+    # @partial(vmap, in_axes=[None, 0,0,0])
     def build_waveforms(self, emitted_photons, xy_positions, z_positions):
         '''
         Compute the sensor response to electrons on the EL region, with a guassian spread
         '''
+
+        print("emitted_photons.shape: ", emitted_photons.shape)
+        print("xy_positions.shape: ", xy_positions.shape)
+        print("z_positions.shape: ", z_positions.shape)
 
         sensor_shape = self.sensor_locations.shape[0:2]
         n_sensors    = reduce(lambda x, y : x*y, sensor_shape, 1)
