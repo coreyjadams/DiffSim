@@ -112,7 +112,7 @@ def prepare_next_config(batch_size, input_file, data_args, name, is_mc):
             datatype  = "sparse3d",
             producer  = "e_deps",
             name      = name+"e_deps",
-            MaxVoxels = 500,
+            MaxVoxels = 300,
             UnfilledVoxelValue = 0.0,
             Augment   = False,
             Channels  = [0]

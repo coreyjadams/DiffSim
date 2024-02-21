@@ -188,6 +188,13 @@ def main(cfg : OmegaConf) -> None:
 
         # Initialize the model:
         example_data = next(dataloader)
+
+        out_positions, mask = eg(example_data['e_deps'], cfg.physics.electron_generator)
+        example_data['e_deps'] = out_positions
+        example_data['mask'] = mask
+    
+
+
         sim_func, sim_params, next_rng_keys, simulator_str = init_simulator(master_key, cfg, example_data)
 
 
@@ -274,6 +281,9 @@ def main(cfg : OmegaConf) -> None:
 
         dl_iterable = dataloader
         comp_data = next(dl_iterable)
+        comp_out_positions, comp_mask = eg(comp_data['e_deps'], cfg.physics.electron_generator)
+        comp_data['e_deps'] = comp_out_positions
+        comp_data['mask'] = comp_mask
 
         prefactor = {
                 "S2Pmt" : 1.,
@@ -299,11 +309,16 @@ def main(cfg : OmegaConf) -> None:
                     save_dir = cfg.save_path / pathlib.Path(f'comp/{generator_state.step}/')
                     # jax.tree_util.tree_map( lambda x : x.shape,
                                             # generator_state.params)
+                    
+                    print(comp_data['e_deps'][0,:,2])
+                    mean_z = (comp_data["e_deps"] * comp_data['mask']).sum() / comp_data['mask'].sum()
+                    print("mean z: ", mean_z)
                     simulated_data = generator_state.apply_fn(
                         generator_state.params,
-                        comp_data['e_deps'],
+                        comp_data['e_deps'], comp_data['mask'],
                         rngs=next_rng_keys
                     )
+
 
 
                     # Remove the prefactor on simulated data for this:
@@ -316,6 +331,7 @@ def main(cfg : OmegaConf) -> None:
                     comparison_plots(save_dir, simulated_data, comp_data)
 
 
+                    exit()
 
             metrics = {}
             start = time.time()
@@ -323,6 +339,12 @@ def main(cfg : OmegaConf) -> None:
             batch = next(dl_iterable)
 
             batch = scale_data(batch, prefactor)
+
+            out_positions, mask = eg(batch['e_deps'], cfg.physics.electron_generator)
+            batch['e_deps'] = out_positions
+            batch['mask'] = mask
+            
+        
 
             if cfg.run.profile:
                 if should_do_io(MPI_AVAILABLE, rank):
@@ -401,8 +423,58 @@ def main(cfg : OmegaConf) -> None:
         except:
             pass
 
+import numpy
+
+def eg(energies_and_positions, cfg, M=10000):
+
+    # First, split the energy and positions apart:
+    positions = energies_and_positions[:,:,0:3]
+    energies  = energies_and_positions[:,:,-1]
+    batch_size= energies_and_positions.shape[0]
+
+    normal_draws = numpy.random.normal(size=energies.shape)
+
+    # Get the number of electrons per position:
+    n      = energies * 1000.*1000. / cfg.p1
+    sigmas = numpy.sqrt( n * cfg.p2)
+
+    n_electrons = (sigmas*normal_draws + n).astype(numpy.int32)
 
 
+
+    n_per_batch = n_electrons.sum(axis=-1)
+    print("Energy per event: ", energies.sum(axis=-1))
+    print("Electrons per event: ", n_per_batch)
+
+    out_positions = numpy.zeros((batch_size, M, 3))
+    mask = numpy.zeros((batch_size, M, 1))
+
+    for b in range(batch_size):
+        start = 0;
+        for i in range(n_electrons.shape[-1]):
+            end = n_electrons[b][i]
+            out_positions[b, start:end] = positions[b,i]
+            start = start + end
+        
+        mask[b][0:n_per_batch[b]] = 1.0
+
+
+
+    # sparse_electrons = jsparse.BCOO.fromdense(broadcasted_electrons)
+
+
+    return out_positions, mask
+
+    # For each energy, compute n:
+    
+    # print(energy.shape)
+    # print(sigmas.shape)
+    # print(normal_draw.shape)
+
+    # Generate a sample for each energy:
+
+
+    return n_electrons
 
 
 

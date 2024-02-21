@@ -67,6 +67,9 @@ class NNSensorResponse(nn.Module):
         # exp_values = exp_values.transpose()
         exp_values = exp_values * (0.39894228040/numpy.sqrt(bin_sigma**2))
 
+        # print("sensor_response.shape: ", sensor_response.shape)
+        # print("exp_values.shape: ", exp_values.shape)
+
         waveforms = numpy.matmul(sensor_response.T, exp_values)
         return waveforms
     
@@ -125,22 +128,23 @@ class NNSensorResponse(nn.Module):
         if self.active:
 
             response = self.sens_response(xy_positions)
-            print("el_photons.shape: ", el_photons.shape)
-            print("response.shape: ", response.shape)
+            # print("el_photons.shape: ", el_photons.shape)
+            # print("response.shape: ", response.shape)
             # The pmt_response should have the shape (N_energy_deps, N_electrons_max, n_sensors)
 
 
             # Put this through exp to map from 0 to 1
             sensor_probs = nn.sigmoid(response)
 
-            
+            # print("sensor_probs.shape: ", sensor_probs.shape)
             # The full response of the sensors is the product:
             response_of_sensors = el_photons * sensor_probs
 
             
             waveforms = self.build_waveforms(response_of_sensors, z_positions)
             
-            print("waveforms.shape: ", waveforms.shape)
+            # print("waveforms.shape: ", waveforms.shape)
+
 
             # waveforms =  waveforms.sum(axis=0)
             

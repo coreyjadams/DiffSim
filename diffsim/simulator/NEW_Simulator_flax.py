@@ -75,17 +75,17 @@ class NEW_Simulator(nn.Module):
     sipm_s2:  SipmResponse
 
     @nn.compact
-    def __call__(self, energies_and_positions):
+    def __call__(self, balanced_electrons, mask):
 
-        electrons, n_electrons = self.eg(energies_and_positions)
+        # electrons, n_electrons = self.eg(energies_and_positions)
 
-        balanced_electrons, mask = load_balance_electrons(electrons, n_electrons)
+        # balanced_electrons, mask = load_balance_electrons(electrons, n_electrons)
 
         diffused = self.diff(balanced_electrons)
 
 
         # mask = self.lifetime(diffused, n_electrons)
-
+        print(mask.shape)
 
         # pmts only depend on xy:
         diffused_xy = diffused[:,0:2]
@@ -104,10 +104,17 @@ class NEW_Simulator(nn.Module):
 
 
         el_photons = numpy.exp(el_gain)*mask
+
+        print("numpy.sum(mask): ", numpy.sum(mask))
+        print("numpy.sum(el_photons): ", numpy.sum(el_photons))
+
         # el_photons = el_gain*(1 + self.el_sim(diffused_xy) ) 
 
         # This is getting normalized to the range (-1,1):
         pmt_response = self.pmt_s2(el_photons, diffused_xy, diffused_z)
+
+        print("numpy.sum(pmt_response): ", numpy.sum(pmt_response))
+
 
         sipm_response = self.sipm_s2(el_photons, diffused_xy, diffused_z)
 

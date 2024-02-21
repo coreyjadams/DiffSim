@@ -45,7 +45,7 @@ class NNSensorResponse:
 @dataclass
 class SipmSensorResponse:
     active:        bool = True
-    mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[24,24,24,1]))
+    mlp_cfg:  MLPConfig = field(default_factory= lambda : MLPConfig(layers =[12,12,12,1]))
     waveform_ticks: int = 550
     bin_sigma:    float = 0.1
     n_sensors:      int = 48*48

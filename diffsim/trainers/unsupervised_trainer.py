@@ -58,6 +58,8 @@ def close_over_training_step(config, MPI_AVAILABLE):
         # - Compute the gradients for whichever will be optimized this step (currently both)
         # - Apply the updates and return
 
+        # In this, we say that 1.0 is "REAL" and 0.0 is "FAKE" 
+        # in the output of the discriminator
 
         def g_loss_fn(g_params):
 
@@ -88,8 +90,6 @@ def close_over_training_step(config, MPI_AVAILABLE):
 
             return g_loss, metrics
 
-        # In this, we say that 1.0 is "REAL" and 0.0 is "FAKE" 
-        # in the output of the discriminator
 
         def d_loss_fn(d_params):
 

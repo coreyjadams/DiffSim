@@ -118,7 +118,7 @@ def close_over_training_step(config, MPI_AVAILABLE):
         def loss_fn(params):
             simulated_waveforms = state.apply_fn(
                     params,
-                    batch['e_deps'],
+                    batch['e_deps'], batch['mask'],
                     rngs=rng_seeds
                 )
             

@@ -33,8 +33,8 @@ class Data:
 #     run: int  = 8677
 #     format: dataformat = dataformat.ic
 
-# data_path = "/lus/grand/projects/datascience/cadams/datasets/NEXT/new_raw_data/8677/"
-data_path = "/data/datasets/NEXT/NEW-simulation/kr-data/"
+data_path = "/lus/grand/projects/datascience/cadams/datasets/NEXT/new_raw_data/8677/"
+# data_path = "/data/datasets/NEXT/NEW-simulation/kr-data/"
 
 @dataclass
 class KryptonMC(Data):
@@ -55,7 +55,7 @@ class Krypton8677(Data):
 class Tl208MC(Data):
     name: str = "tl208"
     mc:  bool = True
-    path: str = "/data/datasets/NEXT/NEW-simulation/tl208/r0/r0_larcv_all.r0_merged.h5"
+    path: str = "/lus/eagle/projects/datascience/cadams/NEXT/NEW-simulation/larcv_all_train.h5"
     image_key: str = "S2Si"
     deps_key: str  = "mchits"
 

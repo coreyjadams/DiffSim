@@ -16,7 +16,7 @@ def init_checkpointer(save_path):
 
     options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=5, create=True)
     checkpoint_manager = orbax.checkpoint.CheckpointManager(
-        ckpt_path,
+        ckpt_path.resolve(),
         checkpointer,
         options
     )

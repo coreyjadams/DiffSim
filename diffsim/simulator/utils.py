@@ -1,5 +1,6 @@
 import jax.numpy as numpy
 import jax.random as random
+import flax.linen as nn
 
 from jax import tree_util, vmap
 from functools import reduce
@@ -81,11 +82,16 @@ def init_simulator(init_key, config, example_data):
     split_rng["params"] = False
 
     # Initialize the parameters:
-    sim_params = simulator.init(rng_keys, example_data['e_deps'][0])
+    sim_params = simulator.init(rng_keys, example_data['e_deps'][0], example_data['mask'][0])
     sim_func   = jit(flax.linen.apply(type(simulator).__call__, simulator))
 
-    simulator_str = simulator.tabulate(rng_keys, example_data["e_deps"][0],
+    tabulate_fn = nn.tabulate(simulator,
+        rng_keys, 
+        compute_flops = True,
+        compute_vjp_flops = True,
         console_kwargs={"width":120}, depth=3)
+
+    simulator_str = tabulate_fn(example_data["e_deps"][0], example_data['mask'][0])
 
     # print(example_data.keys(), flush=True)
     # print(example_data["S2Si"].shape, flush=True)
@@ -94,7 +100,7 @@ def init_simulator(init_key, config, example_data):
     batch_size = example_data["S2Si"].shape[0]
     multi_rngs = batch_init_rng_keys(rng_keys, batch_size)
     # print(multi_rngs, flush=True)
-    sim_func = jit(vmap(sim_func, in_axes=(None, 0,)))
+    sim_func = jit(vmap(sim_func, in_axes=(None, 0,0,)))
     
     # test_output = sim_func(sim_params, example_data['e_deps'], rngs=multi_rngs)
 
