@@ -285,6 +285,8 @@ def main(cfg : OmegaConf) -> None:
         comp_data['e_deps'] = comp_out_positions
         comp_data['mask'] = comp_mask
 
+        print("Current e_deps" , comp_data['e_deps'])
+
         prefactor = {
                 "S2Pmt" : 1.,
                 "S2Si"  : 1.
@@ -310,8 +312,21 @@ def main(cfg : OmegaConf) -> None:
                     # jax.tree_util.tree_map( lambda x : x.shape,
                                             # generator_state.params)
                     
-                    print(comp_data['e_deps'][0,:,2])
-                    mean_z = (comp_data["e_deps"] * comp_data['mask']).sum() / comp_data['mask'].sum()
+                    z    = comp_data['e_deps'][0,:,2]
+                    mask = comp_data['mask'][0,:,0]
+
+                    print("z[0:10]: ", z[0:10])
+                    print("mask[0:10]: ", mask[0:10])
+
+                    print("mask.sum(): ", mask.sum())
+                    print("z.sum(): ", z.sum())
+                    print("z.min(): ", z.min())
+                    print("z.max(): ", z.max())
+
+                    print("z.shape: ", z.shape)
+                    print("mask.shape: ", mask.shape)
+                    print("(z*mask)[0:10]: ", (z*mask)[0:10])
+                    mean_z = (z * mask).sum() / mask.sum()
                     print("mean z: ", mean_z)
                     simulated_data = generator_state.apply_fn(
                         generator_state.params,
@@ -423,59 +438,41 @@ def main(cfg : OmegaConf) -> None:
         except:
             pass
 
-import numpy
+import numpy as np
 
-def eg(energies_and_positions, cfg, M=10000):
+def eg(energies_and_positions, cfg, M=100000):
 
     # First, split the energy and positions apart:
     positions = energies_and_positions[:,:,0:3]
     energies  = energies_and_positions[:,:,-1]
     batch_size= energies_and_positions.shape[0]
 
-    normal_draws = numpy.random.normal(size=energies.shape)
+    normal_draws = np.random.normal(size=energies.shape)
 
     # Get the number of electrons per position:
     n      = energies * 1000.*1000. / cfg.p1
-    sigmas = numpy.sqrt( n * cfg.p2)
+    sigmas = np.sqrt( n * cfg.p2)
 
-    n_electrons = (sigmas*normal_draws + n).astype(numpy.int32)
+    n_electrons = (sigmas*normal_draws + n).astype(np.int32)
 
 
 
     n_per_batch = n_electrons.sum(axis=-1)
-    print("Energy per event: ", energies.sum(axis=-1))
-    print("Electrons per event: ", n_per_batch)
 
-    out_positions = numpy.zeros((batch_size, M, 3))
-    mask = numpy.zeros((batch_size, M, 1))
+    out_positions = np.zeros((batch_size, M, 3))
+    mask = np.zeros((batch_size, M, 1))
 
     for b in range(batch_size):
         start = 0;
         for i in range(n_electrons.shape[-1]):
-            end = n_electrons[b][i]
+            end = start + n_electrons[b][i]
             out_positions[b, start:end] = positions[b,i]
-            start = start + end
-        
+            start = start + n_electrons[b][i]
+
         mask[b][0:n_per_batch[b]] = 1.0
 
 
-
-    # sparse_electrons = jsparse.BCOO.fromdense(broadcasted_electrons)
-
-
     return out_positions, mask
-
-    # For each energy, compute n:
-    
-    # print(energy.shape)
-    # print(sigmas.shape)
-    # print(normal_draw.shape)
-
-    # Generate a sample for each energy:
-
-
-    return n_electrons
-
 
 
 def iotest(dataloader, config):

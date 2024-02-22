@@ -30,7 +30,7 @@ def generic_meta(zoom_sampling=1.0):
 
 pmaps_meta  = lambda : generic_meta(zoom_sampling=1.0)
 lr_meta     = lambda : generic_meta(zoom_sampling=10.0)
-energy_meta = lambda : generic_meta(zoom_sampling=20.0)
+energy_meta = lambda : generic_meta(zoom_sampling=10.0)
 
 
 
@@ -315,6 +315,7 @@ class larcv_dataset(object):
                         minibatch_data[key],
                         dense_shape = self.pmaps_meta['n_voxels'][0],
                     )
+                    print(self.pmaps_meta)
                 if "S2Pmt" in key:
                     minibatch_data[key]  = data_transforms.larcvsparse_to_dense_2d(
                         minibatch_data[key],
@@ -323,7 +324,9 @@ class larcv_dataset(object):
                 if "e_deps" in key:
                     minibatch_data[key] = numpy.squeeze(minibatch_data[key], axis=1)
 
-                    minibatch_data[key] = data_transforms.larcv_edeps(minibatch_data[key], generic_meta(20.))
+                    minibatch_data[key] = data_transforms.larcv_edeps(
+                        minibatch_data[key], 
+                        generic_meta(10.))
 
                 if "event" in key:
                     minibatch_data["e_deps"] = data_transforms.larcv_event_deps(minibatch_data[key])
