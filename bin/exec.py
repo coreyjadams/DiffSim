@@ -98,7 +98,6 @@ def scale_data(input_batch, prefactor):
 
     return input_batch
 
-
 @hydra.main(version_base = None, config_path="../diffsim/config/recipes")
 def main(cfg : OmegaConf) -> None:
 
@@ -285,7 +284,6 @@ def main(cfg : OmegaConf) -> None:
         comp_data['e_deps'] = comp_out_positions
         comp_data['mask'] = comp_mask
 
-        print("Current e_deps" , comp_data['e_deps'])
 
         prefactor = {
                 "S2Pmt" : 1.,
@@ -312,22 +310,22 @@ def main(cfg : OmegaConf) -> None:
                     # jax.tree_util.tree_map( lambda x : x.shape,
                                             # generator_state.params)
                     
-                    z    = comp_data['e_deps'][0,:,2]
-                    mask = comp_data['mask'][0,:,0]
+                    # z    = comp_data['e_deps'][0,:,2]
+                    # mask = comp_data['mask'][0,:,0]
 
-                    print("z[0:10]: ", z[0:10])
-                    print("mask[0:10]: ", mask[0:10])
+                    # print("z[0:10]: ", z[0:10])
+                    # print("mask[0:10]: ", mask[0:10])
 
-                    print("mask.sum(): ", mask.sum())
-                    print("z.sum(): ", z.sum())
-                    print("z.min(): ", z.min())
-                    print("z.max(): ", z.max())
+                    # print("mask.sum(): ", mask.sum())
+                    # print("z.sum(): ", z.sum())
+                    # print("z.min(): ", z.min())
+                    # print("z.max(): ", z.max())
 
-                    print("z.shape: ", z.shape)
-                    print("mask.shape: ", mask.shape)
-                    print("(z*mask)[0:10]: ", (z*mask)[0:10])
-                    mean_z = (z * mask).sum() / mask.sum()
-                    print("mean z: ", mean_z)
+                    # print("z.shape: ", z.shape)
+                    # print("mask.shape: ", mask.shape)
+                    # print("(z*mask)[0:10]: ", (z*mask)[0:10])
+                    # mean_z = (z * mask).sum() / mask.sum()
+                    # print("mean z: ", mean_z)
                     simulated_data = generator_state.apply_fn(
                         generator_state.params,
                         comp_data['e_deps'], comp_data['mask'],
@@ -344,9 +342,6 @@ def main(cfg : OmegaConf) -> None:
                             simulated_data[key] = simulated_data[key] / prefactor[key]
 
                     comparison_plots(save_dir, simulated_data, comp_data)
-
-
-                    exit()
 
             metrics = {}
             start = time.time()
@@ -440,6 +435,7 @@ def main(cfg : OmegaConf) -> None:
 
 import numpy as np
 
+@profile
 def eg(energies_and_positions, cfg, M=100000):
 
     # First, split the energy and positions apart:
@@ -464,12 +460,27 @@ def eg(energies_and_positions, cfg, M=100000):
 
     for b in range(batch_size):
         start = 0;
-        for i in range(n_electrons.shape[-1]):
-            end = start + n_electrons[b][i]
-            out_positions[b, start:end] = positions[b,i]
-            start = start + n_electrons[b][i]
+        # Collect the postions, broadcasted to the right shape, and then concatenate them
+        # into an array.  Then write the array into the output:
 
-        mask[b][0:n_per_batch[b]] = 1.0
+        broadcasted_points = []
+        for i in range(n_electrons.shape[-1]):
+            n = n_electrons[b][i]
+            broadcasted_points.append( numpy.broadcast_to(positions[b,i], (n, 3)) )
+            # start = start + n_electrons[b][i]
+
+        merged_points = numpy.concatenate(broadcasted_points, axis=0)
+        total_n = merged_points.shape[0]
+        print(merged_points.shape)      
+        out_positions[b, 0:total_n] = merged_points                              
+
+
+        # for i in range(n_electrons.shape[-1]):
+        #     end = start + n_electrons[b][i]
+        #     out_positions[b, start:end] = positions[b,i]
+        #     start = start + n_electrons[b][i]
+
+        mask[b][0:total_n] = 1.0
 
 
     return out_positions, mask

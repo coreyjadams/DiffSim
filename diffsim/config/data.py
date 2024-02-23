@@ -55,7 +55,7 @@ class Krypton8677(Data):
 class Tl208MC(Data):
     name: str = "tl208"
     mc:  bool = True
-    path: str = "/lus/eagle/projects/datascience/cadams/NEXT/NEW-simulation/larcv_all_train.h5"
+    path: str = "/lus/eagle/projects/datascience/cadams/NEXT/next-white-generation/tl208-bigger/merged_tl208-train.h5"
     image_key: str = "S2Si"
     deps_key: str  = "mchits"
 

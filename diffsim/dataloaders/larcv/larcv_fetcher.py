@@ -11,12 +11,15 @@ import numpy
 
 def generic_meta(zoom_sampling=1.0):
 
+    if isinstance(zoom_sampling, (int, float)):
+        zoom_sampling = [ zoom_sampling for _ in range(3)]
+
     return numpy.array([
         (
             [
-                int(48*zoom_sampling), 
-                int(48*zoom_sampling), 
-                int(550*zoom_sampling), 
+                int(48*zoom_sampling[0]), 
+                int(48*zoom_sampling[1]), 
+                int(550*zoom_sampling[2]), 
             ], 
             [480., 480., 550.],
             [-235., -235., 0])
@@ -315,7 +318,6 @@ class larcv_dataset(object):
                         minibatch_data[key],
                         dense_shape = self.pmaps_meta['n_voxels'][0],
                     )
-                    print(self.pmaps_meta)
                 if "S2Pmt" in key:
                     minibatch_data[key]  = data_transforms.larcvsparse_to_dense_2d(
                         minibatch_data[key],
@@ -326,7 +328,7 @@ class larcv_dataset(object):
 
                     minibatch_data[key] = data_transforms.larcv_edeps(
                         minibatch_data[key], 
-                        generic_meta(10.))
+                        generic_meta(20))
 
                 if "event" in key:
                     minibatch_data["e_deps"] = data_transforms.larcv_event_deps(minibatch_data[key])
