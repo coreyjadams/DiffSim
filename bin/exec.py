@@ -435,9 +435,10 @@ def main(cfg : OmegaConf) -> None:
 
 import numpy as np
 
-@profile
-def eg(energies_and_positions, cfg, M=100000):
+# @profile
+def eg(energies_and_positions, cfg, M=120000):
 
+    # numpy.save("test_input", energies_and_positions)
     # First, split the energy and positions apart:
     positions = energies_and_positions[:,:,0:3]
     energies  = energies_and_positions[:,:,-1]
@@ -466,12 +467,11 @@ def eg(energies_and_positions, cfg, M=100000):
         broadcasted_points = []
         for i in range(n_electrons.shape[-1]):
             n = n_electrons[b][i]
-            broadcasted_points.append( numpy.broadcast_to(positions[b,i], (n, 3)) )
+            broadcasted_points.append( np.broadcast_to(positions[b,i], (n, 3)) )
             # start = start + n_electrons[b][i]
 
-        merged_points = numpy.concatenate(broadcasted_points, axis=0)
+        merged_points = np.concatenate(broadcasted_points, axis=0)
         total_n = merged_points.shape[0]
-        print(merged_points.shape)      
         out_positions[b, 0:total_n] = merged_points                              
 
 
@@ -505,6 +505,10 @@ def iotest(dataloader, config):
         start = time.time()
 
         batch = next(dl_iterable)
+
+        out_positions, mask = eg(batch['e_deps'], config.physics.electron_generator)
+        batch['e_deps'] = out_positions
+        batch['mask'] = mask
 
 
         metrics["io_time"] = time.time() - start
