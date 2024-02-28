@@ -48,7 +48,6 @@ from . NEW_Simulator_flax import init_NEW_simulator
 
 def init_simulator(init_key, config, example_data):
 
-    # print(example_data["e_deps"].shape)
     import flax
 
     from jax import vmap, jit
@@ -93,15 +92,12 @@ def init_simulator(init_key, config, example_data):
 
     simulator_str = tabulate_fn(example_data["e_deps"][0], example_data['mask'][0])
 
-    # print(example_data.keys(), flush=True)
-    # print(example_data["S2Si"].shape, flush=True)
-    # exit()
 
     batch_size = example_data["S2Si"].shape[0]
     multi_rngs = batch_init_rng_keys(rng_keys, batch_size)
-    # print(multi_rngs, flush=True)
+
     sim_func = jit(vmap(sim_func, in_axes=(None, 0,0,)))
     
-    # test_output = sim_func(sim_params, example_data['e_deps'], rngs=multi_rngs)
+
 
     return sim_func, sim_params, multi_rngs, simulator_str

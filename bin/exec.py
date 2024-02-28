@@ -310,22 +310,6 @@ def main(cfg : OmegaConf) -> None:
                     # jax.tree_util.tree_map( lambda x : x.shape,
                                             # generator_state.params)
                     
-                    # z    = comp_data['e_deps'][0,:,2]
-                    # mask = comp_data['mask'][0,:,0]
-
-                    # print("z[0:10]: ", z[0:10])
-                    # print("mask[0:10]: ", mask[0:10])
-
-                    # print("mask.sum(): ", mask.sum())
-                    # print("z.sum(): ", z.sum())
-                    # print("z.min(): ", z.min())
-                    # print("z.max(): ", z.max())
-
-                    # print("z.shape: ", z.shape)
-                    # print("mask.shape: ", mask.shape)
-                    # print("(z*mask)[0:10]: ", (z*mask)[0:10])
-                    # mean_z = (z * mask).sum() / mask.sum()
-                    # print("mean z: ", mean_z)
                     simulated_data = generator_state.apply_fn(
                         generator_state.params,
                         comp_data['e_deps'], comp_data['mask'],
@@ -348,11 +332,13 @@ def main(cfg : OmegaConf) -> None:
 
             batch = next(dl_iterable)
 
-            batch = scale_data(batch, prefactor)
-
             out_positions, mask = eg(batch['e_deps'], cfg.physics.electron_generator)
             batch['e_deps'] = out_positions
             batch['mask'] = mask
+
+            batch = scale_data(batch, prefactor)
+
+
             
         
 

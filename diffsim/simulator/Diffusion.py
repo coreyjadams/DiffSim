@@ -26,7 +26,6 @@ class Diffusion(nn.Module):
         '''
         Apply diffusion to a single electron (shape of [3])
         '''
-        print(electrons.shape)
 
         # Diffusion is proportional to the sqrt of Z:
         z = electrons[2]

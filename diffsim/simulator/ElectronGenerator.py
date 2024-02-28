@@ -34,9 +34,6 @@ class ElectronGenerator(nn.Module):
         n      = energy * 1000.*1000. / self.p1
         sigmas = numpy.sqrt( n * self.p2)
     
-        # print(energy.shape)
-        # print(sigmas.shape)
-        # print(normal_draw.shape)
 
         # Generate a sample for each energy:
         n_electrons = (sigmas*normal_draw + n).astype(numpy.int32)
