@@ -1,0 +1,17 @@
+defaults:
+  - _self_
+  - base_config
+  - mode: train_supervised
+  - override data: tl208_mc
+
+save_path: output/${run.id}/${data.name}/
+model_name: model
+
+mode:
+  optimizer: lamb
+  learning_rate: 0.001
+
+physics:
+  pmt_s2:
+    bin_sigma: 0.1
+  
